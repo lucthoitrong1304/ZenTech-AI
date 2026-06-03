@@ -5,7 +5,17 @@ Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+GET http://127.0.0.1:8000/health
 Accept: application/json
 
 ###
+
+POST http://127.0.0.1:8000/chat/respond
+Content-Type: application/json
+
+{
+  "conversationId": "conversation-1",
+  "messageId": "message-1",
+  "message": "Shop co ho tro doi tra khong?",
+  "history": []
+}

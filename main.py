@@ -1,13 +1,12 @@
 from fastapi import FastAPI
 
-app = FastAPI()
+from app.api.routes import router
 
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+def create_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(router)
+    return app
 
 
-@app.get("/hello/{name}")
-async def say_hello(name: str):
-    return {"message": f"Hello {name}"}
+app = create_app()
