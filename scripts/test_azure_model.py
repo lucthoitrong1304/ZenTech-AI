@@ -1,20 +1,12 @@
 import sys
 from pathlib import Path
 
-from openai import OpenAI
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
-
-
-def build_client() -> OpenAI:
-    return OpenAI(
-        api_key=settings.azure_openai_api_key,
-        base_url=settings.azure_openai_endpoint,
-    )
+from app.services.openai_client import build_client
 
 
 def main() -> None:
