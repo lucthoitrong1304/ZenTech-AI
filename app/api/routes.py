@@ -41,3 +41,20 @@ def analyze_report(request: ReportAnalyzeRequest) -> ReportAnalyzeResponse:
         raise HTTPException(status_code=502, detail="AI service returned an empty report analysis")
 
     return ReportAnalyzeResponse(content=content)
+
+
+from app.schemas.admin_logs import AdminLogExplainRequest, AdminLogExplainResponse
+from app.services.admin_logs_service import explain_log_error
+
+@router.post("/admin/logs/explain", response_model=AdminLogExplainResponse)
+def explain_log(request: AdminLogExplainRequest) -> AdminLogExplainResponse:
+    try:
+        explanation = explain_log_error(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to explain log error") from exc
+
+    if not explanation:
+        raise HTTPException(status_code=502, detail="AI service returned an empty explanation")
+
+    return AdminLogExplainResponse(explanation=explanation)
+
