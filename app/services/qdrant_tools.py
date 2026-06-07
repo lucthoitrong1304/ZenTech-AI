@@ -40,6 +40,9 @@ def insert_documents(documents: list[QdrantDocument]) -> None:
                 "content": document.content,
                 "source": document.source,
                 "metadata": document.metadata,
+                "datasetId": document.datasetId,
+                "documentId": document.documentId,
+                "agentIds": document.agentIds,
             },
         )
         for document, embedding in zip(valid_documents, embeddings, strict=True)
@@ -51,7 +54,12 @@ def insert_documents(documents: list[QdrantDocument]) -> None:
     )
 
 
-def search_documents(query: str, limit: int | None = None) -> list[QdrantSearchResult]:
+def search_documents(
+    query: str,
+    limit: int | None = None,
+    dataset_ids: list[str] | None = None,
+    score_threshold: float | None = None,
+) -> list[QdrantSearchResult]:
     clean_query = query.strip()
     if not clean_query:
         return []
@@ -65,10 +73,12 @@ def search_documents(query: str, limit: int | None = None) -> list[QdrantSearchR
     except UnexpectedResponse:
         return []
 
+    query_filter = build_dataset_filter(dataset_ids or [])
     response = client.query_points(
         collection_name=settings.qdrant_collection_name,
         query=embed_text(clean_query),
         limit=limit or settings.qdrant_search_limit,
+        query_filter=query_filter,
         with_payload=True,
     )
 
@@ -81,13 +91,62 @@ def search_documents(query: str, limit: int | None = None) -> list[QdrantSearchR
 
         source = payload.get("source")
         metadata = payload.get("metadata")
+        score = float(point.score)
+        if score_threshold is not None and score < score_threshold:
+            continue
+
+        dataset_id = payload.get("datasetId")
+        document_id = payload.get("documentId")
         results.append(
             QdrantSearchResult(
                 id=point.id,
                 content=content,
-                score=point.score,
+                score=score,
                 source=source if isinstance(source, str) else None,
                 metadata=metadata if isinstance(metadata, dict) else {},
+                datasetId=dataset_id if isinstance(dataset_id, str) else None,
+                documentId=document_id if isinstance(document_id, str) else None,
             )
         )
     return results
+
+
+def delete_document_points(document_id: str) -> None:
+    if not settings.qdrant_url:
+        return
+
+    client = build_qdrant_client()
+    try:
+        if not client.collection_exists(collection_name=settings.qdrant_collection_name):
+            return
+    except UnexpectedResponse:
+        return
+
+    client.delete(
+        collection_name=settings.qdrant_collection_name,
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="documentId",
+                        match=models.MatchValue(value=document_id),
+                    )
+                ]
+            )
+        ),
+    )
+
+
+def build_dataset_filter(dataset_ids: list[str]) -> models.Filter | None:
+    clean_ids = [dataset_id for dataset_id in dataset_ids if dataset_id]
+    if not clean_ids:
+        return None
+
+    return models.Filter(
+        must=[
+            models.FieldCondition(
+                key="datasetId",
+                match=models.MatchAny(any=clean_ids),
+            )
+        ]
+    )

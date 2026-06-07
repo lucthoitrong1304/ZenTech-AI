@@ -8,6 +8,9 @@ class QdrantDocument(BaseModel):
     source: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     id: int | str | None = None
+    datasetId: str | None = None
+    documentId: str | None = None
+    agentIds: list[str] = Field(default_factory=list)
 
 
 class QdrantSearchResult(BaseModel):
@@ -16,3 +19,5 @@ class QdrantSearchResult(BaseModel):
     score: float
     source: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    datasetId: str | None = None
+    documentId: str | None = None
