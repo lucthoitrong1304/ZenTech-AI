@@ -9,6 +9,8 @@ from app.schemas.agent import (
 from app.schemas.chat import ChatRespondRequest, ChatRespondResponse
 from app.services.agent_service import generate_agent_reply
 from app.services.chat_service import generate_reply
+from app.schemas.management_reports import ReportAnalyzeRequest, ReportAnalyzeResponse
+from app.services.management_reports_service import analyze_report_data
 from app.services.document_ingest_service import ingest_document
 from app.services.qdrant_tools import delete_document_points
 
@@ -36,6 +38,18 @@ def respond_to_chat(request: ChatRespondRequest) -> ChatRespondResponse:
         raise HTTPException(status_code=502, detail="AI service returned an empty response")
 
     return ChatRespondResponse(content=content)
+
+@router.post("/management/analyze/report", response_model=ReportAnalyzeResponse)
+def analyze_report(request: ReportAnalyzeRequest) -> ReportAnalyzeResponse:
+    try:
+        content = analyze_report_data(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to analyze report") from exc
+
+    if not content:
+        raise HTTPException(status_code=502, detail="AI service returned an empty report analysis")
+
+    return ReportAnalyzeResponse(content=content)
 
 
 @router.post("/agents/respond", response_model=AgentRespondResponse)
