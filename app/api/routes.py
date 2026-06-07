@@ -14,6 +14,9 @@ from app.services.management_reports_service import analyze_report_data
 from app.services.document_ingest_service import ingest_document
 from app.services.qdrant_tools import delete_document_points
 
+from app.schemas.admin_logs import AdminLogExplainRequest, AdminLogExplainResponse
+from app.services.admin_logs_service import explain_log_error
+
 router = APIRouter()
 
 
@@ -83,3 +86,16 @@ def delete_knowledge_document(document_id: str) -> dict[str, str]:
         raise HTTPException(status_code=502, detail="Document delete failed") from exc
 
     return {"status": "deleted"}
+
+@router.post("/admin/logs/explain", response_model=AdminLogExplainResponse)
+def explain_log(request: AdminLogExplainRequest) -> AdminLogExplainResponse:
+    try:
+        explanation = explain_log_error(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to explain log error") from exc
+
+    if not explanation:
+        raise HTTPException(status_code=502, detail="AI service returned an empty explanation")
+
+    return AdminLogExplainResponse(explanation=explanation)
+
