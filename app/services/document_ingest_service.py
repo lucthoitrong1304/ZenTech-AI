@@ -1,10 +1,9 @@
-import base64
-import io
 from uuid import uuid4
 
 from app.schemas.agent import KnowledgeIngestRequest
 from app.schemas.rag import QdrantDocument
 from app.services.qdrant_tools import delete_document_points, insert_documents
+from app.utils.document_text import extract_text
 
 MAX_CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 160
@@ -35,22 +34,6 @@ def ingest_document(request: KnowledgeIngestRequest) -> int:
     delete_document_points(request.documentId)
     insert_documents(documents)
     return len(documents)
-
-
-def extract_text(content_base64: str, content_type: str, file_name: str) -> str:
-    raw = base64.b64decode(content_base64)
-    lower_name = file_name.lower()
-    if content_type == "application/pdf" or lower_name.endswith(".pdf"):
-        return extract_pdf_text(raw)
-    return raw.decode("utf-8", errors="ignore")
-
-
-def extract_pdf_text(raw: bytes) -> str:
-    from pypdf import PdfReader
-
-    reader = PdfReader(io.BytesIO(raw))
-    pages = [page.extract_text() or "" for page in reader.pages]
-    return "\n".join(page.strip() for page in pages if page.strip())
 
 
 def chunk_text(text: str) -> list[str]:
