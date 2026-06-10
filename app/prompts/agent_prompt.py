@@ -50,14 +50,14 @@ def build_runtime_instruction(request: AgentRespondRequest) -> str:
     return (
         request.agent.systemPrompt.strip()
         + "\n\n"
-        + "Che do demo agent: hay hanh xu nhu agent dang tu van truc tiep trong san pham. "
-        + "Tra loi tu nhien theo prompt, role va lich su hoi thoai, nhung khong duoc mo rong "
-        + "pham vi ngoai system prompt/guardrails cua agent. Dataset/Qdrant chi la nguon tham "
-        + "khao bo sung khi co lien quan va du tin cay. Neu khong co retrieved context phu hop, "
-        + "agent van co the chao hoi, tu gioi thieu hoac hoi them thong tin, nhung khong duoc tu "
-        + "suy doan kien thuc, dinh nghia hay tu van ngoai pham vi duoc cau hinh. Neu cau hoi "
-        + "ngoai pham vi ho tro, hay lich su tu choi theo system prompt va goi y nguoi dung cung "
-        + "cap them thong tin lien quan den ZenTech."
+        + "Trả lời tự nhiên theo system prompt, vai trò và lịch sử hội thoại. "
+        + "Không mở rộng phạm vi ngoài system prompt hoặc guardrails của agent. "
+        + "Dataset/Qdrant chỉ là nguồn tham khảo bổ sung khi có liên quan và đủ tin cậy. "
+        + "Nếu không có retrieved context phù hợp, agent vẫn có thể chào hỏi, tự giới thiệu "
+        + "hoặc hỏi thêm thông tin, nhưng không được tự suy đoán kiến thức, định nghĩa hay "
+        + "tư vấn ngoài phạm vi được cấu hình. Nếu câu hỏi nằm ngoài phạm vi hỗ trợ, hãy "
+        + "từ chối lịch sự theo system prompt và gợi ý người dùng cung cấp thêm thông tin "
+        + "liên quan đến ZenTech."
     )
 
 
@@ -77,9 +77,10 @@ def build_retrieved_context_message(
         return None
 
     return (
-        "Ngu canh tu dataset cua agent. Chi dung cac doan nay khi chung lien quan den cau hoi. "
-        "Score thap hon nguong agent co nghia la do tin cay thap hon, nhung van co the dung neu "
-        "noi dung truc tiep khop voi cau hoi. Neu cac doan nay khong lien quan, hay bo qua va "
-        "tra loi theo prompt/lich su hoi thoai.\n"
+        "Ngữ cảnh từ dataset của agent. Chỉ sử dụng các đoạn dưới đây khi chúng liên quan trực tiếp "
+        "đến câu hỏi của người dùng. Điểm score thể hiện mức độ tương đồng khi truy xuất từ Qdrant; "
+        "score thấp hơn ngưỡng của agent nghĩa là độ tin cậy thấp hơn, nhưng vẫn có thể dùng nếu nội dung "
+        "khớp rõ với câu hỏi. Nếu các đoạn này không liên quan, hãy bỏ qua và trả lời theo system prompt "
+        "cùng lịch sử hội thoại.\n"
         + "\n".join(lines)
     )
