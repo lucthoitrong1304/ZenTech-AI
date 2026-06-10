@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.schemas.chat import ChatHistoryMessage
+from app.schemas.chat import ChatHistoryMessage, ChatAttachment
 from app.schemas.rag import QdrantSearchResult
 
 
@@ -25,6 +25,7 @@ class AgentRespondRequest(BaseModel):
     role: str
     message: str = Field(min_length=1, max_length=5000)
     history: list[ChatHistoryMessage] = Field(default_factory=list, max_length=12)
+    attachments: list[ChatAttachment] = Field(default_factory=list, max_length=10)
     datasetIds: list[str] = Field(default_factory=list)
     businessContext: dict[str, Any] = Field(default_factory=dict)
 
