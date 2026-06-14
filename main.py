@@ -65,14 +65,35 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         finally:
             trace_id_var.reset(token)
 
+from logging.handlers import TimedRotatingFileHandler
+
+class ArchivedTimedRotatingFileHandler(TimedRotatingFileHandler):
+    def rotation_filename(self, default_name: str) -> str:
+        # default_name sẽ có dạng: .../docker/logs/ai.log.YYYY-MM-DD
+        base_dir, file_name = os.path.split(default_name)
+        parts = file_name.split('.')
+        # parts: ['ai', 'log', 'YYYY-MM-DD']
+        if len(parts) >= 3:
+            date_str = parts[2]
+            archive_dir = os.path.join(base_dir, "archived")
+            os.makedirs(archive_dir, exist_ok=True)
+            return os.path.join(archive_dir, f"ai-{date_str}.log")
+        return default_name
+
 def setup_logging() -> None:
     # Thư mục log lưu tương đối từ thư mục dự án ZenTech-AI sang docker/logs
     log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker", "logs"))
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "ai.log")
 
-    # Tạo FileHandler ghi nhận log dạng UTF-8
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    # Tạo TimedRotatingFileHandler xoay vòng hàng đêm, lưu lịch sử tối đa 30 ngày dạng UTF-8
+    file_handler = ArchivedTimedRotatingFileHandler(
+        log_file,
+        when="midnight",
+        interval=1,
+        backupCount=30,
+        encoding="utf-8"
+    )
     file_handler.setLevel(logging.INFO)
 
     # Format log tương thích với regex bóc tách của Java LokiService
