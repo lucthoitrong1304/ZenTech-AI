@@ -15,6 +15,9 @@ from app.services.qdrant_tools import delete_document_points
 from app.schemas.admin_logs import AdminLogExplainRequest, AdminLogExplainResponse
 from app.services.admin_logs_service import explain_log_error
 
+from app.schemas.admin_incidents import IncidentAnalyzeRequest, IncidentAnalyzeResponse
+from app.services.admin_incidents_service import analyze_incident_data
+
 from app.schemas.inventory_management import InventoryRecommendRequest, InventoryRecommendResponse
 from app.services.inventory_management_service import generate_inventory_recommendation
 
@@ -88,6 +91,16 @@ def explain_log(request: AdminLogExplainRequest) -> AdminLogExplainResponse:
         raise HTTPException(status_code=502, detail="AI service returned an empty explanation")
 
     return AdminLogExplainResponse(explanation=explanation)
+
+
+@router.post("/admin/incidents/analyze", response_model=IncidentAnalyzeResponse)
+def analyze_incident(request: IncidentAnalyzeRequest) -> IncidentAnalyzeResponse:
+    try:
+        response = analyze_incident_data(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to analyze incident") from exc
+
+    return response
 
 
 @router.post("/management/inventory/recommend", response_model=InventoryRecommendResponse)
