@@ -17,6 +17,8 @@ from app.services.admin_logs_service import explain_log_error
 
 from app.schemas.inventory_management import InventoryRecommendRequest, InventoryRecommendResponse
 from app.services.inventory_management_service import generate_inventory_recommendation
+from app.schemas.admin_activity_timeline import ActivityTimelineSummaryRequest, ActivityTimelineSummaryResponse
+from app.services.admin_activity_timeline_service import summarize_activity_timeline
 
 router = APIRouter()
 
@@ -90,6 +92,18 @@ def explain_log(request: AdminLogExplainRequest) -> AdminLogExplainResponse:
     return AdminLogExplainResponse(explanation=explanation)
 
 
+@router.post("/admin/activity-timeline/summary", response_model=ActivityTimelineSummaryResponse)
+def summarize_activity_timeline_route(request: ActivityTimelineSummaryRequest) -> ActivityTimelineSummaryResponse:
+    try:
+        lines = summarize_activity_timeline(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to summarize activity timeline") from exc
+
+    if not lines:
+        raise HTTPException(status_code=502, detail="AI service returned an empty timeline summary")
+
+    return ActivityTimelineSummaryResponse(lines=lines)
+
 @router.post("/management/inventory/recommend", response_model=InventoryRecommendResponse)
 def recommend_inventory(request: InventoryRecommendRequest) -> InventoryRecommendResponse:
     try:
@@ -101,4 +115,3 @@ def recommend_inventory(request: InventoryRecommendRequest) -> InventoryRecommen
         raise HTTPException(status_code=502, detail="AI service returned an empty recommendation content")
 
     return InventoryRecommendResponse(content=content)
-
