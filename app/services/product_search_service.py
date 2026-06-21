@@ -1,4 +1,6 @@
 import logging
+import re
+import unicodedata
 from qdrant_client import models
 from qdrant_client.http.exceptions import UnexpectedResponse
 
@@ -32,6 +34,30 @@ CATEGORY_MAPPING = {
     "phu kien": "Accessories",
     "accessories": "Accessories",
 }
+
+
+def normalize_search_text(value: str) -> str:
+    no_marks = "".join(
+        char for char in unicodedata.normalize("NFD", value.lower())
+        if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", no_marks).split())
+
+
+def filter_explicit_product_matches(query: str, candidates: list[dict]) -> list[dict]:
+    normalized_query = normalize_search_text(query)
+    matches = []
+
+    for candidate in candidates:
+        normalized_name = normalize_search_text(str(candidate.get("name") or ""))
+        if normalized_name and normalized_name in normalized_query:
+            matches.append((normalized_name, candidate))
+
+    if not matches:
+        return candidates
+
+    longest_length = max(len(name) for name, _ in matches)
+    return [candidate for name, candidate in matches if len(name) == longest_length]
 
 def normalize_category_name(name: str | None) -> str | None:
     if not name:

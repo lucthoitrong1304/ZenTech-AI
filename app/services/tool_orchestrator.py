@@ -15,7 +15,7 @@ from app.services.db_tool_client import (
 )
 from app.services.image_analysis_service import analyze_product_image
 from app.services.knowledge_search_service import search_knowledge
-from app.services.product_search_service import search_product_candidates
+from app.services.product_search_service import filter_explicit_product_matches, search_product_candidates
 
 logger = logging.getLogger("ai-service")
 
@@ -80,10 +80,13 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
 
     # 2. Product Search in Qdrant
     if "product_search" in decision.tools:
-        results["product_candidates"] = search_product_candidates(
-            search_query, 
-            limit=request.agent.topK, 
-            category_name=getattr(decision, "category_name", None)
+        results["product_candidates"] = filter_explicit_product_matches(
+            search_query,
+            search_product_candidates(
+                search_query,
+                limit=request.agent.topK,
+                category_name=getattr(decision, "category_name", None),
+            ),
         )
         results["tools_executed"].append("product_search")
 
@@ -92,10 +95,13 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         candidates = results.get("product_candidates", [])
         if not candidates and "product_search" not in decision.tools:
             # Fallback: search with current query to get candidates
-            candidates = search_product_candidates(
-                search_query, 
-                limit=request.agent.topK, 
-                category_name=getattr(decision, "category_name", None)
+            candidates = filter_explicit_product_matches(
+                search_query,
+                search_product_candidates(
+                    search_query,
+                    limit=request.agent.topK,
+                    category_name=getattr(decision, "category_name", None),
+                ),
             )
             results["product_candidates"] = candidates
         

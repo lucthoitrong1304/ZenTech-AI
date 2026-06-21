@@ -1,29 +1,89 @@
+import json
 import logging
 from typing import Generator
 
 from app.config import settings
-from app.schemas.agent import AgentRespondRequest, AgentRespondResponse, RetrievedContextResponse
+from app.prompts.agent_prompt import build_agent_model_input
+from app.schemas.agent import (
+    AgentRespondRequest,
+    AgentRespondResponse,
+    RecommendedProductResponse,
+    RetrievedContextResponse,
+)
 from app.services.context_router import decide_context_tools
 from app.services.openai_client import build_client
 from app.services.tool_orchestrator import execute_tool_plan
-from app.prompts.agent_prompt import build_agent_model_input
 
 logger = logging.getLogger("ai-service")
 
 
+def build_recommended_products(orchestrator_results: dict) -> list[RecommendedProductResponse]:
+    recommendations: list[RecommendedProductResponse] = []
+    seen_product_ids: set[str] = set()
+
+    for product in orchestrator_results.get("resolved_products", []):
+        product_id = str(product.get("productId") or "").strip()
+        image_key = str(product.get("imageKey") or "").strip()
+        if not product_id or not image_key or product_id in seen_product_ids:
+            continue
+
+        recommendations.append(
+            RecommendedProductResponse(
+                productId=product_id,
+                variantId=str(product["variantId"]) if product.get("variantId") else None,
+                name=str(product.get("name") or ""),
+                imageKey=image_key,
+                price=float(product.get("price") or 0),
+                stock=int(product.get("stock") or 0),
+            )
+        )
+        seen_product_ids.add(product_id)
+
+    return recommendations
+
+
+def align_resolved_products_with_recommendations(orchestrator_results: dict) -> None:
+    recommendation_ids = {
+        item.productId for item in build_recommended_products(orchestrator_results)
+    }
+    seen_product_ids: set[str] = set()
+    aligned_products = []
+
+    for product in orchestrator_results.get("resolved_products", []):
+        product_id = str(product.get("productId") or "").strip()
+        if product_id in recommendation_ids and product_id not in seen_product_ids:
+            aligned_products.append(product)
+            seen_product_ids.add(product_id)
+
+    orchestrator_results["resolved_products"] = aligned_products
+
+
+def _sse_event(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _retrieved_context(orchestrator_results: dict) -> list[RetrievedContextResponse]:
+    return [
+        RetrievedContextResponse(
+            id=str(item.id),
+            content=item.content,
+            score=item.score,
+            source=item.source,
+            datasetId=item.datasetId,
+            documentId=item.documentId,
+        )
+        for item in orchestrator_results.get("knowledge_context", [])
+    ]
+
+
 def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
-    logger.info(f"Generating agent reply for user request: {request.message}")
-    
-    # 1. Intent routing and tool planning
+    logger.info("Generating agent reply for user request: %s", request.message)
     route = decide_context_tools(request)
-    
-    # 2. Execute tools based on plan
     orchestrator_results = execute_tool_plan(request, route)
-    
-    # 3. Build model input prompt
+    align_resolved_products_with_recommendations(orchestrator_results)
+    recommendations = build_recommended_products(orchestrator_results)
     messages = build_agent_model_input(request, orchestrator_results)
-    
-    # 4. Invoke LLM (non-streaming)
+
     client = build_client()
     try:
         if hasattr(client, "chat"):
@@ -40,69 +100,58 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
                 input=messages,
             )
             content = response.output_text.strip()
-            
-        logger.info("Successfully generated non-streaming AI response.")
-        
-        # Format context responses for debug
-        retrieved_context = []
-        knowledge_context = orchestrator_results.get("knowledge_context", [])
-        for item in knowledge_context:
-            retrieved_context.append(
-                RetrievedContextResponse(
-                    id=str(item.id),
-                    content=item.content,
-                    score=item.score,
-                    source=item.source,
-                    datasetId=item.datasetId,
-                    documentId=item.documentId,
-                )
-            )
 
         return AgentRespondResponse(
             content=content,
             fallback=False,
             handoffRecommended=(route.intent == "HUMAN_HANDOFF"),
-            retrievedContext=retrieved_context,
-            # We can include debugInfo in businessContext or extra fields
+            retrievedContext=_retrieved_context(orchestrator_results),
+            recommendedProducts=recommendations,
         )
     except Exception as ex:
-        logger.error(f"Error calling LLM: {str(ex)}")
-        fallback_msg = request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này."
+        logger.error("Error calling LLM: %s", ex)
         return AgentRespondResponse(
-            content=fallback_msg,
+            content=request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này.",
             fallback=True,
             handoffRecommended=True,
-            retrievedContext=[]
+            retrievedContext=[],
+            recommendedProducts=recommendations,
         )
 
 
 def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, None, None]:
-    logger.info(f"Generating streaming agent reply for: {request.message}")
-    
-    route = decide_context_tools(request)
-    orchestrator_results = execute_tool_plan(request, route)
-    messages = build_agent_model_input(request, orchestrator_results)
-    
-    client = build_client()
+    logger.info("Generating streaming agent reply for: %s", request.message)
+    recommendations: list[RecommendedProductResponse] = []
     try:
+        route = decide_context_tools(request)
+        orchestrator_results = execute_tool_plan(request, route)
+        align_resolved_products_with_recommendations(orchestrator_results)
+        recommendations = build_recommended_products(orchestrator_results)
+        messages = build_agent_model_input(request, orchestrator_results)
+        client = build_client()
         if hasattr(client, "chat"):
             response = client.chat.completions.create(
                 model=settings.chat_deployment_name,
                 messages=messages,
                 temperature=request.agent.temperature,
                 max_completion_tokens=request.agent.maxTokens,
-                stream=True
+                stream=True,
             )
             for chunk in response:
                 if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    yield _sse_event("chunk", {"content": chunk.choices[0].delta.content})
         else:
-            # Fallback for wrapper
             response = client.responses.create(
                 model=settings.chat_deployment_name,
                 input=messages,
             )
-            yield response.output_text
+            yield _sse_event("chunk", {"content": response.output_text})
     except Exception as ex:
-        logger.error(f"Error calling LLM stream: {str(ex)}")
-        yield request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này."
+        logger.error("Error calling LLM stream: %s", ex)
+        fallback = request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này."
+        yield _sse_event("chunk", {"content": fallback})
+    finally:
+        yield _sse_event(
+            "complete",
+            {"recommendedProducts": [item.model_dump() for item in recommendations]},
+        )

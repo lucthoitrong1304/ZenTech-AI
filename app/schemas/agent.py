@@ -39,11 +39,21 @@ class RetrievedContextResponse(BaseModel):
     documentId: str | None = None
 
 
+class RecommendedProductResponse(BaseModel):
+    productId: str
+    variantId: str | None = None
+    name: str
+    imageKey: str
+    price: float
+    stock: int
+
+
 class AgentRespondResponse(BaseModel):
     content: str
     fallback: bool = False
     handoffRecommended: bool = False
     retrievedContext: list[RetrievedContextResponse] = Field(default_factory=list)
+    recommendedProducts: list[RecommendedProductResponse] = Field(default_factory=list)
 
 
 class KnowledgeIngestRequest(BaseModel):

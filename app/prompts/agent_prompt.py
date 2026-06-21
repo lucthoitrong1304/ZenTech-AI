@@ -156,6 +156,16 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
             f"   - Đánh giá: {prod.get('rating') or 'Chưa có'} sao ({prod.get('reviewCount') or 0} đánh giá)\n"
             f"   - Độ tin cậy tìm kiếm: {confidence} (Score={score:.3f})"
         )
+        detail_sections = [
+            ("MÔ TẢ CHI TIẾT", prod.get("description")),
+            ("THÔNG SỐ KỸ THUẬT", prod.get("specifications")),
+            ("TƯƠNG THÍCH", prod.get("compatibility")),
+            ("BỘ SẢN PHẨM", prod.get("boxContents")),
+            ("HỖ TRỢ", prod.get("supportInfo")),
+        ]
+        for title, content in detail_sections:
+            if content and str(content).strip():
+                lines.append(f"   - {title} (Markdown):\n{str(content).strip()}")
     return "\n".join(lines)
 
 
