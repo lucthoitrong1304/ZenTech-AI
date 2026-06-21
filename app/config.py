@@ -31,14 +31,36 @@ class Settings(BaseSettings):
         alias="AZURE_OPENAI_EMBEDDING_ENDPOINT",
     )
 
+    azure_openai_vision_model_name: str = Field(
+        default="gpt-5.4-mini",
+        alias="AZURE_OPENAI_VISION_MODEL_NAME",
+    )
+
     qdrant_url: str | None = Field(default=None, alias="QDRANT_URL")
     qdrant_api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection_name: str = Field(
         default="zentech_knowledge",
         alias="QDRANT_COLLECTION_NAME",
     )
+    qdrant_knowledge_collection: str = Field(
+        default="knowledge_vectors",
+        alias="QDRANT_KNOWLEDGE_COLLECTION",
+    )
+    qdrant_product_collection: str = Field(
+        default="product_vectors",
+        alias="QDRANT_PRODUCT_COLLECTION",
+    )
     qdrant_vector_size: int = Field(default=1536, alias="QDRANT_VECTOR_SIZE")
     qdrant_search_limit: int = Field(default=5, alias="QDRANT_SEARCH_LIMIT")
+
+    spring_boot_internal_url: str = Field(
+        default="http://localhost:8080",
+        alias="SPRING_BOOT_INTERNAL_URL",
+    )
+    spring_boot_internal_token: str = Field(
+        default="zentech_internal_secret_token_123!@",
+        alias="SPRING_BOOT_INTERNAL_TOKEN",
+    )
 
     @property
     def chat_deployment_name(self) -> str:
