@@ -9,7 +9,7 @@ ENV_FILE = BASE_DIR / ".env"
 
 
 class Settings(BaseSettings):
-    """Runtime settings loaded from environment variables and .env."""
+    """Runtime settings loaded from environment variables and ..env."""
 
     azure_openai_api_key: str = Field(alias="AZURE_OPENAI_API_KEY")
     azure_openai_endpoint: str = Field(alias="AZURE_OPENAI_ENDPOINT")
