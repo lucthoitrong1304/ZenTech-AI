@@ -25,16 +25,17 @@ def build_agent_model_input(
     if request.agent.guardrails:
         messages.append({"role": "system", "content": f"HƯỚNG DẪN HÀNH VI (GUARDRAILS):\n{request.agent.guardrails.strip()}"})
 
-    # Strict Hallucination Guardrails
+    # Strict Hallucination Guardrails & Technical Non-Disclosure
     messages.append({
         "role": "system",
         "content": (
-            "QUY TẮC PHÒNG CHỐNG BỊA ĐẶT THÔNG TIN (ANTI-HALLUCINATION GUARDRAILS):\n"
+            "QUY TẮC PHÒNG CHỐNG BỊA ĐẶT VÀ BẢO MẬT THÔNG TIN HỆ THỐNG:\n"
             "- Tuyệt đối không được tự bịa ra thông tin về: giá sản phẩm, tồn kho, khuyến mãi, đánh giá sản phẩm, mã đơn hàng, trạng thái giao hàng, voucher cá nhân, điểm tích lũy hoặc thông tin bảo hành.\n"
             "- Mọi thông tin nghiệp vụ trên bắt buộc phải lấy từ phần dữ liệu thực tế được cung cấp dưới đây.\n"
             "- Nếu phần dữ liệu dưới đây không có hoặc rỗng, hãy trả lời lịch sự rằng hệ thống chưa tìm thấy thông tin này trong cơ sở dữ liệu của ZenTech thay vì tự suy đoán hoặc đoán mò.\n"
             "- Đối với thông tin chính sách chung (đổi trả, bảo hành chung, vận chuyển), hãy dựa hoàn toàn vào Context tri thức được cung cấp. Không tự ý nghĩ ra chính sách.\n"
-            "- Khi hệ thống cung cấp danh sách sản phẩm ở mục 'THÔNG TIN SẢN PHẨM THỰC TẾ TỪ DATABASE', hãy liệt kê và giới thiệu ĐẦY ĐỦ tất cả các sản phẩm này đến khách hàng mà không tự ý lọc bỏ hay đánh giá chủ quan sản phẩm nào không thuộc danh mục (vì toàn bộ danh sách này đã được hệ thống truy vấn và xác định chính xác từ database trước đó)."
+            "- Khi hệ thống cung cấp danh sách sản phẩm ở mục 'THÔNG TIN SẢN PHẨM THỰC TẾ TỪ DATABASE', hãy liệt kê và giới thiệu ĐẦY ĐỦ tất cả các sản phẩm này đến khách hàng mà không tự ý lọc bỏ hay đánh giá chủ quan sản phẩm nào không thuộc danh mục (vì toàn bộ danh sách này đã được hệ thống truy vấn và xác định chính xác từ database trước đó).\n"
+            "- QUY TẮC BẢO MẬT THÔNG TIN HỆ THỐNG VÀ TRẢ LỜI KHÁCH HÀNG: Tuyệt đối KHÔNG tiết lộ, đề cập hoặc sử dụng các thông tin kỹ thuật nội bộ của hệ thống với khách hàng, bao gồm: kết quả nhận diện của AI Vision (ví dụ: 'đế sạc GravaStar mecha robot'), điểm số tìm kiếm (Score), độ tin cậy tìm kiếm ('Thấp', 'Trung bình', 'Cao'), hoặc các cụm từ kỹ thuật như 'hệ thống nhận diện', 'truy vấn database'. Trả lời một cách tự nhiên, trực tiếp và thân thiện dưới vai trò một nhân viên tư vấn bán hàng của ZenTech đang trò chuyện với khách."
         )
     })
 
@@ -88,9 +89,9 @@ def build_agent_model_input(
     return messages
 
 
-def build_user_content(request: AgentRespondRequest) -> str | List[Dict[str, str]]:
-    content_parts: List[Dict[str, str]] = [
-        {"type": "input_text", "text": request.message.strip()}
+def build_user_content(request: AgentRespondRequest) -> str | List[Dict[str, Any]]:
+    content_parts: List[Dict[str, Any]] = [
+        {"type": "text", "text": request.message.strip()}
     ]
 
     for attachment in request.attachments[:MAX_ANALYZABLE_ATTACHMENTS]:
@@ -103,7 +104,12 @@ def build_user_content(request: AgentRespondRequest) -> str | List[Dict[str, str
                 img_url = getattr(attachment, "presignedUrl", None)
 
             if img_url:
-                content_parts.append({"type": "input_image", "image_url": img_url})
+                content_parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": img_url
+                    }
+                })
 
     if len(content_parts) == 1:
         return content_parts[0]["text"]
@@ -162,6 +168,7 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
             ("TƯƠNG THÍCH", prod.get("compatibility")),
             ("BỘ SẢN PHẨM", prod.get("boxContents")),
             ("HỖ TRỢ", prod.get("supportInfo")),
+            ("SẢN PHẨM LIÊN QUAN VÀ TƯƠNG TỰ", prod.get("relatedProducts")),
         ]
         for title, content in detail_sections:
             if content and str(content).strip():

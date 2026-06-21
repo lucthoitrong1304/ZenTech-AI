@@ -18,6 +18,7 @@ class ContextRouteDecision:
     reason: str
     should_search_knowledge: bool = False
     category_name: str | None = None
+    product_name: str | None = None
 
 
 def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
@@ -53,8 +54,6 @@ def is_simple_small_talk(message: str) -> bool:
     words = message.split()
     greeting_tokens = ("chao", "hello", "hi", "thanks", "cam on")
     return len(words) <= 2 and any(token in message for token in greeting_tokens)
-
-
 INTENT_ROUTING_PROMPT = """Bạn là Router phân loại ý định (Intent Router) cho hệ thống trợ lý ảo ZenTech.
 Nhiệm vụ của bạn là đọc tin nhắn của khách hàng, lịch sử hội thoại và thông tin đính kèm để phân loại ý định của khách hàng vào một trong các nhóm sau, đồng thời lập Tool Plan phù hợp:
 
@@ -87,12 +86,14 @@ Các ý định (Intent) hợp lệ và các Tool tương ứng có thể chọn
 Quy tắc quan trọng:
 - Nếu tin nhắn chứa tệp đính kèm là hình ảnh (hoặc người dùng đề cập đến ảnh đính kèm), ưu tiên chọn `IMAGE_PRODUCT_QA` và dùng tool `analyze_image`.
 - Nếu khách hàng hỏi về các sản phẩm thuộc một danh mục cụ thể (ví dụ: "chargers", "sạc", "bàn phím", "keyboards", "loa", "tai nghe"), hãy trích xuất tên danh mục đó vào trường `category_name`.
+- Nếu tin nhắn của khách hàng sử dụng các từ mang tính chất tham chiếu/thay thế (ví dụ: "sản phẩm đó", "nó", "con này", "cái này", "chi tiết sản phẩm đi", "còn hàng không") để hỏi tiếp về sản phẩm đã được nhắc đến ở lượt thoại ngay trước đó trong lịch sử hội thoại (lượt trả lời của trợ lý ảo), hãy tìm tên chính xác của sản phẩm đó từ lịch sử và trích xuất vào trường `product_name`.
 - Trả về kết quả dưới dạng JSON duy nhất có cấu trúc:
 {
   "intent": "TÊN_INTENT",
   "tools": ["tool_1", "tool_2"],
   "reason": "Lý do ngắn gọn phân loại",
-  "category_name": "Tên danh mục được trích xuất (nếu có, ví dụ: 'chargers' hoặc 'keyboards'), ngược lại là null"
+  "category_name": "Tên danh mục được trích xuất (nếu có, ví dụ: 'chargers' hoặc 'keyboards'), ngược lại là null",
+  "product_name": "Tên sản phẩm được trích xuất hoặc tham chiếu từ lịch sử chat (nếu có, ví dụ: 'Power Strip'), ngược lại là null"
 }
 """
 
@@ -151,10 +152,11 @@ def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecisio
         tools = data.get("tools", [])
         reason = data.get("reason", "")
         category_name = data.get("category_name")
+        product_name = data.get("product_name")
         
         should_search_knowledge = "knowledge_search" in tools
-        logger.info(f"Intent classified: {intent} | Tools: {tools} | Reason: {reason} | Category: {category_name}")
-        return ContextRouteDecision(intent, tools, reason, should_search_knowledge, category_name)
+        logger.info(f"Intent classified: {intent} | Tools: {tools} | Reason: {reason} | Category: {category_name} | Product: {product_name}")
+        return ContextRouteDecision(intent, tools, reason, should_search_knowledge, category_name, product_name)
 
     except Exception as ex:
         logger.error(f"Failed to classify intent via LLM, fallback to KNOWLEDGE_QA: {str(ex)}")

@@ -69,7 +69,7 @@ def normalize_category_name(name: str | None) -> str | None:
         if unicodedata.category(char) != "Mn"
     )
     cleaned = " ".join(no_marks.strip().split())
-    return CATEGORY_MAPPING.get(cleaned, name)
+    return CATEGORY_MAPPING.get(cleaned, None)
 
 
 def search_product_candidates(query: str, limit: int = 5, category_name: str | None = None) -> list[dict]:
@@ -120,27 +120,36 @@ def search_product_candidates(query: str, limit: int = 5, category_name: str | N
         )
 
         candidates = []
-        for point in response.points:
-            payload = point.payload or {}
-            candidates.append({
-                "id": point.id,
-                "score": float(point.score),
-                "productId": payload.get("productId"),
-                "variantId": payload.get("variantId"),
-                "sku": payload.get("sku"),
-                "name": payload.get("name"),
-                "searchText": payload.get("searchText"),
-                "categoryId": payload.get("categoryId"),
-                "categoryName": payload.get("categoryName"),
-                "brandId": payload.get("brandId"),
-                "brandName": payload.get("brandName"),
-                "colors": payload.get("colors", []),
-                "sizes": payload.get("sizes", []),
-                "material": payload.get("material"),
-                "tags": payload.get("tags", []),
-                "imageKeys": payload.get("imageKeys", []),
-                "updatedAt": payload.get("updatedAt"),
-            })
+        if response.points:
+            top_score = float(response.points[0].score)
+            margin = 0.08
+            min_threshold = 0.35
+            
+            for point in response.points:
+                score = float(point.score)
+                if score < (top_score - margin) or score < min_threshold:
+                    continue
+                
+                payload = point.payload or {}
+                candidates.append({
+                    "id": point.id,
+                    "score": score,
+                    "productId": payload.get("productId"),
+                    "variantId": payload.get("variantId"),
+                    "sku": payload.get("sku"),
+                    "name": payload.get("name"),
+                    "searchText": payload.get("searchText"),
+                    "categoryId": payload.get("categoryId"),
+                    "categoryName": payload.get("categoryName"),
+                    "brandId": payload.get("brandId"),
+                    "brandName": payload.get("brandName"),
+                    "colors": payload.get("colors", []),
+                    "sizes": payload.get("sizes", []),
+                    "material": payload.get("material"),
+                    "tags": payload.get("tags", []),
+                    "imageKeys": payload.get("imageKeys", []),
+                    "updatedAt": payload.get("updatedAt"),
+                })
         logger.info(f"Retrieved {len(candidates)} product candidates from Qdrant.")
         return candidates
 
