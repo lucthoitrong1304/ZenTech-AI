@@ -13,6 +13,8 @@ from app.schemas.rag import QdrantDocument
 from app.services.agent_service import generate_agent_reply, generate_agent_reply_stream
 from app.schemas.management_reports import ReportAnalyzeRequest, ReportAnalyzeResponse
 from app.services.management_reports_service import analyze_report_data
+from app.schemas.management_impact_analysis import ManagementImpactAnalyzeRequest, ManagementImpactAnalyzeResponse
+from app.services.management_impact_analysis_service import analyze_management_impact
 from app.services.document_ingest_service import ingest_document
 from app.services.qdrant_client import build_qdrant_client
 from app.services.qdrant_tools import delete_document_points, insert_documents, ensure_collection
@@ -52,6 +54,19 @@ def analyze_report(request: ReportAnalyzeRequest) -> ReportAnalyzeResponse:
         raise HTTPException(status_code=502, detail="AI service returned an empty report analysis")
 
     return ReportAnalyzeResponse(content=content)
+
+
+@router.post("/management/analyze/impact", response_model=ManagementImpactAnalyzeResponse)
+def analyze_impact(request: ManagementImpactAnalyzeRequest) -> ManagementImpactAnalyzeResponse:
+    try:
+        ai_summary = analyze_management_impact(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to analyze business impact") from exc
+
+    if not ai_summary:
+        raise HTTPException(status_code=502, detail="AI service returned an empty business impact analysis")
+
+    return ManagementImpactAnalyzeResponse(aiSummary=ai_summary)
 
 
 @router.post("/agents/respond", response_model=AgentRespondResponse)
