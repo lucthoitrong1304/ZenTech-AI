@@ -40,6 +40,43 @@ def build_recommended_products(orchestrator_results: dict) -> list[RecommendedPr
         seen_product_ids.add(product_id)
 
     return recommendations
+def extract_and_append_related_products(request: AgentRespondRequest, orchestrator_results: dict) -> None:
+    message_lower = request.message.lower()
+    keywords = ["liên quan", "tương tự", "khác", "cùng nhóm", "related", "similar", "alternative"]
+    is_related_query = any(kw in message_lower for kw in keywords)
+    
+    if not is_related_query:
+        return
+        
+    resolved = orchestrator_results.get("resolved_products", [])
+    if not resolved:
+        return
+        
+    new_products = list(resolved)
+    seen_ids = {str(p.get("productId") or "").strip() for p in resolved}
+    
+    for product in resolved:
+        related_list = product.get("relatedProductList") or []
+        for item in related_list:
+            prod_id = str(item.get("productId") or "").strip()
+            if prod_id and prod_id not in seen_ids:
+                new_products.append({
+                    "productId": prod_id,
+                    "variantId": item.get("variantId"),
+                    "name": item.get("name"),
+                    "variantName": item.get("variantName"),
+                    "price": float(item.get("price") or 0),
+                    "stock": int(item.get("stock") or 0),
+                    "imageKey": item.get("imageKey"),
+                    "description": "",
+                    "specifications": "",
+                    "compatibility": "",
+                    "boxContents": "",
+                    "supportInfo": ""
+                })
+                seen_ids.add(prod_id)
+                
+    orchestrator_results["resolved_products"] = new_products
 
 
 def align_resolved_products_with_recommendations(orchestrator_results: dict) -> None:
@@ -80,6 +117,7 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
     logger.info("Generating agent reply for user request: %s", request.message)
     route = decide_context_tools(request)
     orchestrator_results = execute_tool_plan(request, route)
+    extract_and_append_related_products(request, orchestrator_results)
     align_resolved_products_with_recommendations(orchestrator_results)
     recommendations = build_recommended_products(orchestrator_results)
     messages = build_agent_model_input(request, orchestrator_results)
@@ -125,6 +163,7 @@ def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, 
     try:
         route = decide_context_tools(request)
         orchestrator_results = execute_tool_plan(request, route)
+        extract_and_append_related_products(request, orchestrator_results)
         align_resolved_products_with_recommendations(orchestrator_results)
         recommendations = build_recommended_products(orchestrator_results)
         messages = build_agent_model_input(request, orchestrator_results)
