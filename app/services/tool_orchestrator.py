@@ -1,0 +1,166 @@
+import logging
+import re
+from typing import Any, Dict, List, Optional
+
+from app.schemas.agent import AgentRespondRequest
+from app.services.context_router import ContextRouteDecision
+from app.services.db_tool_client import (
+    get_customer_profile,
+    get_customer_vouchers,
+    get_loyalty_points,
+    get_order_tracking,
+    get_warranty_status,
+    resolve_orders,
+    resolve_products,
+)
+from app.services.image_analysis_service import analyze_product_image
+from app.services.knowledge_search_service import search_knowledge
+from app.services.product_search_service import search_product_candidates
+
+logger = logging.getLogger("ai-service")
+
+
+def extract_identifier(text: str) -> Optional[str]:
+    # Match UUIDs (standard for primary keys)
+    uuid_match = re.search(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", text)
+    if uuid_match:
+        return uuid_match.group(0)
+    # Match generic order codes (alphanumeric, length 6-15, e.g. ORD123456, ZT-892341)
+    code_match = re.search(r"\b(ORD|ZT|ORDER)?-?([A-Za-z0-9]{6,15})\b", text, re.IGNORECASE)
+    if code_match:
+        return code_match.group(0)
+    return None
+
+
+def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecision) -> Dict[str, Any]:
+    logger.info(f"Executing tool plan for intent: {decision.intent} | Tools: {decision.tools}")
+    
+    results: Dict[str, Any] = {
+        "intent": decision.intent,
+        "tools_executed": [],
+    }
+
+    # Extract business context for DB calls
+    user_id = request.businessContext.get("userId")
+    conv_id = request.businessContext.get("conversationId")
+    context = {
+        "userId": user_id,
+        "role": request.role,
+        "conversationId": conv_id,
+        "shopId": request.businessContext.get("shopId"),
+        "channel": request.businessContext.get("channel"),
+        "agentId": request.agent.id,
+    }
+
+    search_query = request.message
+    
+    # 1. Vision Model Analysis
+    if "analyze_image" in decision.tools:
+        # Find the first image attachment (image_url or presignedUrl)
+        image_attachments = [att for att in request.attachments if att.attachmentType == "IMAGE"]
+        if image_attachments:
+            # Use mediaUrl or check if presignedUrl is available
+            img = image_attachments[0]
+            # Since presignedUrl is not defined in older ChatAttachment schema but is requested in refactor,
+            # we check if hasattr/dict lookup is possible
+            img_url = img.mediaUrl
+            if not img_url and isinstance(img, dict):
+                img_url = img.get("presignedUrl") or img.get("mediaUrl")
+            elif not img_url:
+                img_url = getattr(img, "presignedUrl", None)
+
+            if img_url:
+                results["image_analysis_query"] = analyze_product_image(img_url)
+                search_query = results["image_analysis_query"]
+                results["tools_executed"].append("analyze_image")
+            else:
+                logger.warning("analyze_image tool requested but no valid image URL found.")
+        else:
+            logger.warning("analyze_image tool requested but no image attachment present.")
+
+    # 2. Product Search in Qdrant
+    if "product_search" in decision.tools:
+        results["product_candidates"] = search_product_candidates(
+            search_query, 
+            limit=request.agent.topK, 
+            category_name=getattr(decision, "category_name", None)
+        )
+        results["tools_executed"].append("product_search")
+
+    # 3. Product Details Resolution from DB
+    if "resolve_product_candidates" in decision.tools or "get_product_detail" in decision.tools or "product_search" in decision.tools:
+        candidates = results.get("product_candidates", [])
+        if not candidates and "product_search" not in decision.tools:
+            # Fallback: search with current query to get candidates
+            candidates = search_product_candidates(
+                search_query, 
+                limit=request.agent.topK, 
+                category_name=getattr(decision, "category_name", None)
+            )
+            results["product_candidates"] = candidates
+        
+        product_ids = list(set([c["productId"] for c in candidates if c.get("productId")]))
+        variant_ids = list(set([c["variantId"] for c in candidates if c.get("variantId")]))
+        
+        if product_ids or variant_ids:
+            results["resolved_products"] = resolve_products(product_ids, variant_ids, context)
+            results["tools_executed"].append("resolve_product_candidates")
+        else:
+            results["resolved_products"] = []
+
+    # 4. Knowledge Base RAG Search
+    if "knowledge_search" in decision.tools:
+        results["knowledge_context"] = search_knowledge(
+            query=request.message,
+            dataset_ids=request.datasetIds,
+            limit=request.agent.topK,
+            score_threshold=request.agent.scoreThreshold
+        )
+        results["tools_executed"].append("knowledge_search")
+
+    # 5. Customer Profile Info
+    if "get_customer_profile" in decision.tools and user_id:
+        profile = get_customer_profile(user_id, context)
+        if profile:
+            results["customer_profile"] = profile
+            results["tools_executed"].append("get_customer_profile")
+
+    # 6. Customer Vouchers / Coupons
+    if "get_customer_vouchers" in decision.tools and user_id:
+        vouchers = get_customer_vouchers(user_id, context)
+        results["customer_vouchers"] = vouchers
+        results["tools_executed"].append("get_customer_vouchers")
+
+    # 7. Customer Loyalty Points
+    if "get_loyalty_points" in decision.tools and user_id:
+        points = get_loyalty_points(user_id, context)
+        if points:
+            results["loyalty_points"] = points
+            results["tools_executed"].append("get_loyalty_points")
+
+    # 8. Order Details, Status, Tracking
+    order_id_tools = {"get_order_detail", "get_order_status", "get_order_tracking", "get_customer_orders"}
+    if order_id_tools.intersection(decision.tools):
+        # Extract order ID if explicitly asked
+        extracted_order_id = extract_identifier(request.message)
+        
+        # Call resolve_orders
+        order_info = resolve_orders(extracted_order_id, context)
+        results["order_info"] = order_info
+        results["tools_executed"].append("resolve_orders")
+        
+        if "get_order_tracking" in decision.tools and extracted_order_id:
+            tracking = get_order_tracking(extracted_order_id, context)
+            results["order_tracking"] = tracking
+            results["tools_executed"].append("get_order_tracking")
+
+    # 9. Warranty Info
+    if "get_warranty_status" in decision.tools:
+        item_id = extract_identifier(request.message)
+        if item_id:
+            warranty = get_warranty_status(item_id, context)
+            results["warranty"] = warranty
+            results["tools_executed"].append("get_warranty_status")
+
+    logger.info(f"Completed execution of tool plan. Executed: {results['tools_executed']}")
+    return results
