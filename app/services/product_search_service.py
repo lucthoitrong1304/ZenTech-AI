@@ -69,7 +69,7 @@ def normalize_category_name(name: str | None) -> str | None:
         if unicodedata.category(char) != "Mn"
     )
     cleaned = " ".join(no_marks.strip().split())
-    return CATEGORY_MAPPING.get(cleaned, name)
+    return CATEGORY_MAPPING.get(cleaned, None)
 
 
 def search_product_candidates(query: str, limit: int = 5, category_name: str | None = None) -> list[dict]:
