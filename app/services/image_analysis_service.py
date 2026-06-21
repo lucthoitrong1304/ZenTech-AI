@@ -16,10 +16,11 @@ def analyze_product_image(image_url: str) -> str:
         {
             "role": "system",
             "content": (
-                "Bạn là chuyên gia phân tích hình ảnh sản phẩm thời trang và công nghệ. "
-                "Hãy phân tích ảnh sản phẩm và mô tả chi tiết các đặc điểm nhận diện chính: loại sản phẩm, màu sắc, kiểu dáng, chất liệu, họa tiết nổi bật. "
-                "Đầu ra CHỈ trả về duy nhất một chuỗi mô tả sản phẩm (câu truy vấn tìm kiếm) bằng tiếng Việt để dùng cho tìm kiếm ngữ nghĩa. "
-                "Không thêm lời giải thích, không thêm dấu nháy hay văn bản dư thừa nào khác."
+                "Bạn là chuyên gia phân tích hình ảnh sản phẩm công nghệ và phụ kiện của ZenTech. "
+                "Nhiệm vụ của bạn là nhận diện sản phẩm trong ảnh và đưa ra câu truy vấn tìm kiếm ngắn gọn (search query) bằng tiếng Việt. "
+                "Hãy tập trung nhận diện tên gọi phổ biến của sản phẩm (ví dụ: củ sạc Alpha65, đế sạc Power Strip, bàn phím cơ Mercury, loa Bluetooth, tai nghe) kèm theo thương hiệu (GravaStar) và phong cách nổi bật (cơ khí, mecha, robot, cyberpunk) nếu có. "
+                "Tránh viết mô tả dài dòng chi tiết về các bộ phận hoặc chất liệu nhựa/kim loại. "
+                "Đầu ra CHỈ trả về duy nhất một chuỗi từ khóa tìm kiếm ngắn gọn, không thêm lời giải thích, không thêm dấu nháy hay văn bản dư thừa khác."
             )
         },
         {
@@ -48,7 +49,7 @@ def analyze_product_image(image_url: str) -> str:
                 model=model_name,
                 messages=messages,
                 temperature=0.2,
-                max_tokens=150
+                max_completion_tokens=150
             )
             description = response.choices[0].message.content.strip()
         else:

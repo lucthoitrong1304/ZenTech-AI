@@ -53,6 +53,9 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
     }
 
     search_query = request.message
+    if getattr(decision, "product_name", None):
+        search_query = decision.product_name
+        logger.info(f"Overriding product search query with referenced product: '{search_query}'")
     
     # 1. Vision Model Analysis
     if "analyze_image" in decision.tools:
@@ -80,13 +83,32 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
 
     # 2. Product Search in Qdrant
     if "product_search" in decision.tools:
+        candidates = search_product_candidates(
+            search_query,
+            limit=request.agent.topK,
+            category_name=getattr(decision, "category_name", None),
+        )
+
+        # Check for direct image matches if an image is attached
+        image_attachments = [att for att in request.attachments if att.attachmentType == "IMAGE"]
+        if image_attachments:
+            img = image_attachments[0]
+            img_filename = getattr(img, "fileName", None)
+            if img_filename:
+                import os
+                matched_candidates = []
+                for c in candidates:
+                    image_keys = c.get("imageKeys") or []
+                    if any(os.path.basename(k).lower() == img_filename.lower() for k in image_keys if k):
+                        c["score"] = 1.0
+                        matched_candidates.append(c)
+                if matched_candidates:
+                    logger.info(f"Direct image match found for '{img_filename}'. Filtered down to {len(matched_candidates)} candidates.")
+                    candidates = matched_candidates
+
         results["product_candidates"] = filter_explicit_product_matches(
             search_query,
-            search_product_candidates(
-                search_query,
-                limit=request.agent.topK,
-                category_name=getattr(decision, "category_name", None),
-            ),
+            candidates,
         )
         results["tools_executed"].append("product_search")
 
