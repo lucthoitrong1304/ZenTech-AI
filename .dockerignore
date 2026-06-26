@@ -1,0 +1,15 @@
+.env
+.venv
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.git
+.gitignore
+Dockerfile
+*.log
+docker
+tests
+docs
+scripts
+test_main.http
