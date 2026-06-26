@@ -142,6 +142,80 @@ def delete_document_points(document_id: str, collection_name: str | None = None)
     )
 
 
+def count_product_variant_points(product_id: str, variant_id: str | None, collection_name: str | None = None) -> int:
+    if not settings.qdrant_url:
+        return 0
+
+    col_name = collection_name or settings.qdrant_product_collection
+    client = build_qdrant_client()
+    try:
+        if not client.collection_exists(collection_name=col_name):
+            return 0
+    except UnexpectedResponse:
+        return 0
+
+    must = [
+        models.FieldCondition(
+            key="productId",
+            match=models.MatchValue(value=product_id),
+        )
+    ]
+    if variant_id:
+        must.append(
+            models.FieldCondition(
+                key="variantId",
+                match=models.MatchValue(value=variant_id),
+            )
+        )
+
+    response = client.scroll(
+        collection_name=col_name,
+        scroll_filter=models.Filter(must=must),
+        limit=2,
+        with_payload=False,
+        with_vectors=False,
+    )
+    points = response[0] if isinstance(response, tuple) else response.points
+    return len(points)
+
+
+def count_product_variant_points(product_id: str, variant_id: str | None, collection_name: str | None = None) -> int:
+    if not settings.qdrant_url:
+        return 0
+
+    col_name = collection_name or settings.qdrant_product_collection
+    client = build_qdrant_client()
+    try:
+        if not client.collection_exists(collection_name=col_name):
+            return 0
+    except UnexpectedResponse:
+        return 0
+
+    must = [
+        models.FieldCondition(
+            key="productId",
+            match=models.MatchValue(value=product_id),
+        )
+    ]
+    if variant_id:
+        must.append(
+            models.FieldCondition(
+                key="variantId",
+                match=models.MatchValue(value=variant_id),
+            )
+        )
+
+    response = client.scroll(
+        collection_name=col_name,
+        scroll_filter=models.Filter(must=must),
+        limit=2,
+        with_payload=False,
+        with_vectors=False,
+    )
+    points = response[0] if isinstance(response, tuple) else response.points
+    return len(points)
+
+
 def build_dataset_filter(dataset_ids: list[str]) -> models.Filter | None:
     clean_ids = [dataset_id for dataset_id in dataset_ids if dataset_id]
     if not clean_ids:
