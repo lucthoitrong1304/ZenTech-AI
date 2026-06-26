@@ -8,7 +8,13 @@ from app.schemas.agent import (
     KnowledgeIngestRequest,
     KnowledgeIngestResponse,
 )
-from app.schemas.product import ProductSyncRequest, ProductSyncResponse
+from app.schemas.product import (
+    ProductSyncRequest,
+    ProductSyncResponse,
+    ProductVectorVerifyRequest,
+    ProductVectorVerifyResponse,
+    ProductVectorVerifyResult,
+)
 from app.schemas.rag import QdrantDocument
 from app.services.agent_service import generate_agent_reply, generate_agent_reply_stream
 from app.schemas.management_reports import ReportAnalyzeRequest, ReportAnalyzeResponse
@@ -17,7 +23,7 @@ from app.schemas.management_impact_analysis import ManagementImpactAnalyzeReques
 from app.services.management_impact_analysis_service import analyze_management_impact
 from app.services.document_ingest_service import ingest_document
 from app.services.qdrant_client import build_qdrant_client
-from app.services.qdrant_tools import delete_document_points, insert_documents, ensure_collection
+from app.services.qdrant_tools import count_product_variant_points, delete_document_points, insert_documents, ensure_collection
 
 from app.schemas.admin_logs import AdminLogExplainRequest, AdminLogExplainResponse
 from app.services.admin_logs_service import explain_log_error
@@ -161,6 +167,29 @@ def reindex_products() -> dict[str, str]:
         return {"status": "reindexed"}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Reindex failed: {str(exc)}") from exc
+
+
+@router.post("/api/internal/products/verify", response_model=ProductVectorVerifyResponse)
+def verify_products(request: ProductVectorVerifyRequest) -> ProductVectorVerifyResponse:
+    try:
+        results = []
+        for item in request.items:
+            count = count_product_variant_points(
+                product_id=item.productId,
+                variant_id=item.variantId,
+                collection_name=settings.qdrant_product_collection,
+            )
+            results.append(
+                ProductVectorVerifyResult(
+                    productId=item.productId,
+                    variantId=item.variantId,
+                    present=count > 0,
+                    pointCount=count,
+                )
+            )
+        return ProductVectorVerifyResponse(items=results)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Product verify failed: {str(exc)}") from exc
 
 
 @router.post("/admin/logs/explain", response_model=AdminLogExplainResponse)
