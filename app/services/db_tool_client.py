@@ -6,8 +6,9 @@ import urllib.error
 from typing import Any, Dict, List, Optional
 
 from app.config import settings
+from app.core.logging_utils import truncate_text
 
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("ai-service.tool-orchestrator")
 
 
 def _get_headers() -> Dict[str, str]:
@@ -31,7 +32,7 @@ def _make_request(url: str, method: str, payload: Optional[Dict[str, Any]] = Non
     )
 
     try:
-        logger.info(f"Calling internal API: {method} {url}")
+        logger.info("Calling internal API: method=%s url=%s", method, url)
         with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 raw_data = response.read().decode("utf-8")
@@ -41,17 +42,17 @@ def _make_request(url: str, method: str, payload: Optional[Dict[str, Any]] = Non
                     return json_data["data"]
                 return json_data
             else:
-                logger.error(f"Internal API returned status code {response.status}")
+                logger.error("Internal API returned error status: status=%s", response.status)
                 return None
     except urllib.error.HTTPError as ex:
         try:
             err_body = ex.read().decode("utf-8")
-            logger.error(f"HTTP Error calling internal API: {ex.code} - {err_body}")
+            logger.error("HTTP error calling internal API: status=%s body_preview='%s'", ex.code, truncate_text(err_body, 200), exc_info=True)
         except Exception:
-            logger.error(f"HTTP Error calling internal API: {ex.code} - {ex.reason}")
+            logger.error("HTTP error calling internal API: status=%s reason=%s", ex.code, ex.reason, exc_info=True)
         return None
     except Exception as ex:
-        logger.error(f"Failed to call internal API: {str(ex)}")
+        logger.error("Failed to call internal API", exc_info=True)
         return None
 
 

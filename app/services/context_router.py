@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from typing import List
 
 from app.config import settings
+from app.core.logging_utils import truncate_text
 from app.schemas.agent import AgentRespondRequest
 from app.services.openai_client import build_client
 
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("ai-service.llm")
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class ContextRouteDecision:
 
 
 def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
+    logger.info("Starting intent routing: message_preview='%s' attachment_count=%s", truncate_text(request.message, 150), len(request.attachments))
     message = normalize(request.message)
     if not message:
         return ContextRouteDecision("SMALL_TALK", [], "empty_message")
@@ -191,6 +193,7 @@ def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecisio
     ]
 
     try:
+        logger.info("Starting LLM intent classification")
         client = build_client()
         if hasattr(client, "chat"):
             response = client.chat.completions.create(
@@ -224,10 +227,17 @@ def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecisio
         product_name = data.get("product_name")
         
         should_search_knowledge = "knowledge_search" in tools
-        logger.info(f"Intent classified: {intent} | Tools: {tools} | Reason: {reason} | Category: {category_name} | Product: {product_name}")
+        logger.info(
+            "Intent classified: intent=%s tools=%s reason_preview='%s' category=%s product=%s",
+            intent,
+            tools,
+            truncate_text(reason, 120),
+            category_name,
+            product_name,
+        )
         return ContextRouteDecision(intent, tools, reason, should_search_knowledge, category_name, product_name)
 
     except Exception as ex:
-        logger.error(f"Failed to classify intent via LLM, fallback to KNOWLEDGE_QA: {str(ex)}")
+        logger.error("Failed to classify intent via LLM, fallback to KNOWLEDGE_QA", exc_info=True)
         # Default fallback
         return ContextRouteDecision("KNOWLEDGE_QA", ["knowledge_search"], f"fallback_error: {str(ex)}", True)
