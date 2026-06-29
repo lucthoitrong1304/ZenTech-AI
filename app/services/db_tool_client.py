@@ -98,6 +98,14 @@ def get_customer_profile(user_id: str, context: Dict[str, Any]) -> Optional[Dict
     return _make_request(full_url, "GET")
 
 
+def get_customer_addresses(user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    url = f"{settings.spring_boot_internal_url}/internal/ai/customers/{user_id}/addresses"
+    query_str = urllib.parse.urlencode({k: str(v) for k, v in context.items() if v is not None})
+    full_url = f"{url}?{query_str}" if query_str else url
+    result = _make_request(full_url, "GET")
+    return result if isinstance(result, list) else []
+
+
 def get_customer_vouchers(user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
     url = f"{settings.spring_boot_internal_url}/internal/ai/customers/{user_id}/vouchers"
     query_str = urllib.parse.urlencode({k: str(v) for k, v in context.items() if v is not None})
@@ -122,6 +130,14 @@ def get_order_tracking(order_id: str, context: Dict[str, Any]) -> Optional[Dict[
     query_str = urllib.parse.urlencode({k: str(v) for k, v in context.items() if v is not None})
     full_url = f"{url}?{query_str}" if query_str else url
     return _make_request(full_url, "GET")
+
+
+def get_return_requests(user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    url = f"{settings.spring_boot_internal_url}/internal/ai/customers/{user_id}/returns"
+    query_str = urllib.parse.urlencode({k: str(v) for k, v in context.items() if v is not None})
+    full_url = f"{url}?{query_str}" if query_str else url
+    result = _make_request(full_url, "GET")
+    return result if isinstance(result, list) else []
 
 
 def get_warranty_status(order_item_id: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
