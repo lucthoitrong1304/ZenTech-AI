@@ -1,8 +1,8 @@
 import json
 import logging
 import unicodedata
-from dataclasses import dataclass, field
-from typing import List, Any
+from dataclasses import dataclass
+from typing import List
 
 from app.config import settings
 from app.schemas.agent import AgentRespondRequest
@@ -69,6 +69,28 @@ def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> C
         )
     )
 
+    if any(token in message for token in ("dia chi", "so dia chi", "dia chi giao", "dia chi nhan", "sdt", "so dien thoai")):
+        return ContextRouteDecision(
+            "CUSTOMER_ACCOUNT_QA",
+            ["get_customer_addresses"],
+            "heuristic_address_lookup",
+        )
+
+    if any(token in message for token in ("ho so", "profile", "tai khoan", "thong tin ca nhan", "ten cua toi", "email cua toi")):
+        return ContextRouteDecision(
+            "CUSTOMER_ACCOUNT_QA",
+            ["get_customer_profile"],
+            "heuristic_profile_lookup",
+        )
+
+    if any(token in message for token in ("doi tra", "tra hang", "hoan hang", "huy don", "cancel")):
+        return ContextRouteDecision(
+            "ORDER_AND_POLICY_QA",
+            ["get_customer_orders", "get_return_requests", "knowledge_search"],
+            "heuristic_return_or_cancel_lookup",
+            True,
+        )
+
     if any(token in message for token in ("don hang", "order", "lich su mua", "mua hang")):
         return ContextRouteDecision(
             "ORDER_QA",
@@ -84,10 +106,15 @@ def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> C
         )
 
     review_tokens = ("danh gia", "review", "nhan xet", "binh luan", "tich cuc", "tieu cuc", "sao")
-    reference_tokens = ("san pham nay", "san pham tren", "sp nay", "sp tren", "cai nay", "con nay", "no")
+    reference_tokens = (
+        "san pham nay", "san pham tren", "sp nay", "sp tren",
+        "danh gia nay", "danh gia tren", "binh luan nay", "binh luan tren",
+        "cai nay", "con nay", "ben tren", "o tren", "no",
+    )
     if any(token in message for token in review_tokens):
+        has_reference = any(token in message for token in reference_tokens)
         tools = ["get_product_reviews"]
-        if not has_product_context and not any(token in message for token in reference_tokens):
+        if not has_product_context or not has_reference:
             tools = ["product_search", "resolve_product_candidates", "get_product_reviews"]
         return ContextRouteDecision(
             "PRODUCT_QA",
@@ -113,9 +140,9 @@ Các ý định (Intent) hợp lệ và các Tool tương ứng có thể chọn
 6. `ORDER_QA`: Hỏi trạng thái đơn hàng, tra cứu mã đơn hàng, theo dõi giao hàng.
    - Tool phù hợp: ["get_customer_orders", "get_order_detail", "get_order_status", "get_order_tracking"].
 7. `ORDER_AND_POLICY_QA`: Hỏi đơn hàng kèm chính sách đổi trả/hoàn tiền liên quan đến đơn hàng đó.
-   - Tool phù hợp: ["get_order_detail", "get_order_status", "knowledge_search"].
+   - Tool phù hợp: ["get_order_detail", "get_order_status", "get_return_requests", "knowledge_search"].
 8. `CUSTOMER_ACCOUNT_QA`: Hỏi thông tin tài khoản cá nhân, lịch sử mua hàng, điểm tích lũy của mình.
-   - Tool phù hợp: ["get_customer_profile", "get_loyalty_points", "get_purchase_history"].
+   - Tool phù hợp: ["get_customer_profile", "get_customer_addresses", "get_loyalty_points", "get_purchase_history"].
 9. `PROMOTION_QA`: Hỏi về voucher, khuyến mãi hiện hành của store hoặc voucher cá nhân của khách.
    - Tool phù hợp: ["get_customer_vouchers", "get_promotions"].
 10. `WARRANTY_QA`: Hỏi về tình trạng bảo hành cụ thể của sản phẩm đã mua.

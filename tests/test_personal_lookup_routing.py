@@ -7,7 +7,7 @@ def make_request(message: str, business_context: dict | None = None) -> AgentRes
         agent=RuntimeAgentConfig(
             id="agent-1",
             name="ZenTech AI",
-            systemPrompt="Tra loi ngan gon bang tieng Viet.",
+            systemPrompt="Trả lời ngắn gọn bằng tiếng Việt.",
         ),
         role="CUSTOMER",
         message=message,
@@ -39,3 +39,29 @@ def test_product_review_lookup_uses_page_context() -> None:
 
     assert route.intent == "PRODUCT_QA"
     assert route.tools == ["get_product_reviews"]
+
+
+def test_product_review_lookup_with_explicit_name_searches_even_with_page_context() -> None:
+    route = decide_context_tools(
+        make_request(
+            "Tui muốn tra cứu đánh giá của sản phẩm power strip",
+            {"pageContext": {"currentProductId": "currently-open-product"}},
+        )
+    )
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["product_search", "resolve_product_candidates", "get_product_reviews"]
+
+
+def test_address_lookup_routes_without_llm() -> None:
+    route = decide_context_tools(make_request("Địa chỉ giao hàng mặc định của tôi là gì?"))
+
+    assert route.intent == "CUSTOMER_ACCOUNT_QA"
+    assert route.tools == ["get_customer_addresses"]
+
+
+def test_profile_lookup_routes_without_llm() -> None:
+    route = decide_context_tools(make_request("Thông tin cá nhân của tôi gồm những gì?"))
+
+    assert route.intent == "CUSTOMER_ACCOUNT_QA"
+    assert route.tools == ["get_customer_profile"]

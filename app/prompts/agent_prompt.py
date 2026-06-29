@@ -181,16 +181,20 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
 
     if results.get("auth_required"):
         lines.append(
-            "YEU CAU DANG NHAP: Cau hoi can du lieu ca nhan cua khach hang, "
-            "nhung request AI khong co userId noi bo. Hay bao khach dang nhap de ZenTech AI tra cuu, "
-            "khong yeu cau khach gui email/so dien thoai trong chat."
+            "YÊU CẦU ĐĂNG NHẬP: Câu hỏi cần dữ liệu cá nhân của khách hàng, "
+            "nhưng request AI không có userId nội bộ. Hãy báo khách đăng nhập để ZenTech AI tra cứu, "
+            "không yêu cầu khách gửi email/số điện thoại trong chat."
         )
     
     # Customer profile
     profile = results.get("customer_profile")
     if profile:
         lines.append(f"THÔNG TIN KHÁCH HÀNG:\n{json.dumps(profile, ensure_ascii=False, indent=2)}")
-        
+
+    addresses = results.get("customer_addresses")
+    if addresses:
+        lines.append("DANH SÁCH ĐỊA CHỈ CỦA KHÁCH HÀNG:\n" + json.dumps(addresses, ensure_ascii=False, indent=2))
+
     # Loyalty points
     points = results.get("loyalty_points")
     if points:
@@ -203,20 +207,28 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
 
     promotions = results.get("promotions")
     if promotions:
-        lines.append("DANH SACH KHUYEN MAI / VOUCHER PHU HOP:\n" + json.dumps(promotions, ensure_ascii=False, indent=2))
+        lines.append("DANH SÁCH KHUYẾN MÃI / VOUCHER PHÙ HỢP:\n" + json.dumps(promotions, ensure_ascii=False, indent=2))
 
     # Orders info
     order = results.get("order_info")
     if order:
         lines.append(f"THÔNG TIN ĐƠN HÀNG TRA CỨU:\n{json.dumps(order, ensure_ascii=False, indent=2)}")
 
+    returns = results.get("return_requests")
+    if returns:
+        lines.append(
+            "DANH SÁCH YÊU CẦU ĐỔI TRẢ / HOÀN HÀNG CỦA KHÁCH:\n"
+            + json.dumps(returns, ensure_ascii=False, indent=2)
+            + "\nHướng dẫn: Chỉ tra cứu và hướng dẫn. Không tự ý tạo yêu cầu đổi trả, hủy đơn, hoặc thay đổi đơn hàng trong chat."
+        )
+
     reviews = results.get("product_reviews")
     if reviews:
         lines.append(
             "NOI DUNG DANH GIA SAN PHAM TRA CUU:\n"
             + json.dumps(reviews, ensure_ascii=False, indent=2)
-            + "\nHuong dan: Neu khach hoi review tich cuc hay khong, hay dua vao rating va comment thuc te o tren. "
-            + "Phan loai ngan gon thanh tich cuc / trung lap / tieu cuc; neu comment trong thi noi ro gioi han."
+            + "\nHướng dẫn: Nếu khách hỏi review tích cực hay không, hãy dựa vào rating và comment thực tế ở trên. "
+            + "Phân loại ngắn gọn thành tích cực / trung lập / tiêu cực; nếu comment trống thì nói rõ giới hạn."
         )
 
     # Order tracking

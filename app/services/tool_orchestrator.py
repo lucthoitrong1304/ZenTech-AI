@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from app.schemas.agent import AgentRespondRequest
 from app.services.context_router import ContextRouteDecision
 from app.services.db_tool_client import (
+    get_customer_addresses,
     get_customer_profile,
     get_customer_vouchers,
     get_customer_orders,
@@ -12,6 +13,7 @@ from app.services.db_tool_client import (
     get_order_tracking,
     get_product_reviews,
     get_promotions,
+    get_return_requests,
     get_warranty_status,
     resolve_orders,
     resolve_products,
@@ -56,6 +58,7 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
     }
     personal_tools = {
         "get_customer_profile",
+        "get_customer_addresses",
         "get_customer_vouchers",
         "get_promotions",
         "get_loyalty_points",
@@ -64,6 +67,7 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         "get_order_tracking",
         "get_customer_orders",
         "get_purchase_history",
+        "get_return_requests",
         "get_warranty_status",
     }
     if personal_tools.intersection(decision.tools) and not user_id:
@@ -171,6 +175,11 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["customer_profile"] = profile
             results["tools_executed"].append("get_customer_profile")
 
+    if "get_customer_addresses" in decision.tools and user_id:
+        addresses = get_customer_addresses(user_id, context)
+        results["customer_addresses"] = addresses
+        results["tools_executed"].append("get_customer_addresses")
+
     # 6. Customer Vouchers / Coupons
     if "get_customer_vouchers" in decision.tools and user_id:
         vouchers = get_customer_vouchers(user_id, context)
@@ -210,8 +219,13 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         results["order_info"] = order_info
         results["tools_executed"].append("get_purchase_history")
 
+    if "get_return_requests" in decision.tools and user_id:
+        returns = get_return_requests(user_id, context)
+        results["return_requests"] = returns
+        results["tools_executed"].append("get_return_requests")
+
     if "get_product_reviews" in decision.tools:
-        product_id_for_reviews = referenced_product_id or first_resolved_product_id(results)
+        product_id_for_reviews = first_resolved_product_id(results) or referenced_product_id
         if product_id_for_reviews:
             reviews = get_product_reviews(product_id_for_reviews, context, size=5)
             results["product_reviews"] = reviews
