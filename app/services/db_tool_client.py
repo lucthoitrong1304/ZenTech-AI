@@ -1,5 +1,6 @@
 import json
 import logging
+import urllib.parse
 import urllib.request
 import urllib.error
 from typing import Any, Dict, List, Optional
@@ -74,6 +75,21 @@ def resolve_orders(order_id: Optional[str], context: Dict[str, Any]) -> Optional
     return _make_request(url, "POST", payload)
 
 
+def get_customer_orders(context: Dict[str, Any]) -> Optional[Any]:
+    return resolve_orders(None, context)
+
+
+def get_product_reviews(product_id: str, context: Dict[str, Any], page: int = 0, size: int = 5) -> List[Dict[str, Any]]:
+    query = {
+        "page": max(page, 0),
+        "size": min(max(size, 1), 10),
+    }
+    query_str = urllib.parse.urlencode(query)
+    url = f"{settings.spring_boot_internal_url}/internal/ai/products/{product_id}/reviews?{query_str}"
+    result = _make_request(url, "GET")
+    return result if isinstance(result, list) else []
+
+
 def get_customer_profile(user_id: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = f"{settings.spring_boot_internal_url}/internal/ai/customers/{user_id}/profile"
     # Convert GET params from context
@@ -88,6 +104,10 @@ def get_customer_vouchers(user_id: str, context: Dict[str, Any]) -> List[Dict[st
     full_url = f"{url}?{query_str}" if query_str else url
     result = _make_request(full_url, "GET")
     return result if isinstance(result, list) else []
+
+
+def get_promotions(user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return get_customer_vouchers(user_id, context)
 
 
 def get_loyalty_points(user_id: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:

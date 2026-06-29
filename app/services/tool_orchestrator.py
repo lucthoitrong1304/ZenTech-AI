@@ -7,8 +7,11 @@ from app.services.context_router import ContextRouteDecision
 from app.services.db_tool_client import (
     get_customer_profile,
     get_customer_vouchers,
+    get_customer_orders,
     get_loyalty_points,
     get_order_tracking,
+    get_product_reviews,
+    get_promotions,
     get_warranty_status,
     resolve_orders,
     resolve_products,
@@ -51,8 +54,23 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         "channel": request.businessContext.get("channel"),
         "agentId": request.agent.id,
     }
+    personal_tools = {
+        "get_customer_profile",
+        "get_customer_vouchers",
+        "get_promotions",
+        "get_loyalty_points",
+        "get_order_detail",
+        "get_order_status",
+        "get_order_tracking",
+        "get_customer_orders",
+        "get_purchase_history",
+        "get_warranty_status",
+    }
+    if personal_tools.intersection(decision.tools) and not user_id:
+        results["auth_required"] = True
 
     search_query = request.message
+    referenced_product_id = extract_context_product_id(request.businessContext)
     if getattr(decision, "product_name", None):
         search_query = decision.product_name
         logger.info(f"Overriding product search query with referenced product: '{search_query}'")
@@ -159,6 +177,11 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         results["customer_vouchers"] = vouchers
         results["tools_executed"].append("get_customer_vouchers")
 
+    if "get_promotions" in decision.tools and user_id:
+        promotions = get_promotions(user_id, context)
+        results["promotions"] = promotions
+        results["tools_executed"].append("get_promotions")
+
     # 7. Customer Loyalty Points
     if "get_loyalty_points" in decision.tools and user_id:
         points = get_loyalty_points(user_id, context)
@@ -168,7 +191,7 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
 
     # 8. Order Details, Status, Tracking
     order_id_tools = {"get_order_detail", "get_order_status", "get_order_tracking", "get_customer_orders"}
-    if order_id_tools.intersection(decision.tools):
+    if order_id_tools.intersection(decision.tools) and user_id:
         # Extract order ID if explicitly asked
         extracted_order_id = extract_identifier(request.message)
         
@@ -182,6 +205,20 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["order_tracking"] = tracking
             results["tools_executed"].append("get_order_tracking")
 
+    if "get_purchase_history" in decision.tools and user_id:
+        order_info = get_customer_orders(context)
+        results["order_info"] = order_info
+        results["tools_executed"].append("get_purchase_history")
+
+    if "get_product_reviews" in decision.tools:
+        product_id_for_reviews = referenced_product_id or first_resolved_product_id(results)
+        if product_id_for_reviews:
+            reviews = get_product_reviews(product_id_for_reviews, context, size=5)
+            results["product_reviews"] = reviews
+            results["tools_executed"].append("get_product_reviews")
+        else:
+            results["product_reviews"] = []
+
     # 9. Warranty Info
     if "get_warranty_status" in decision.tools:
         item_id = extract_identifier(request.message)
@@ -192,3 +229,26 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
 
     logger.info(f"Completed execution of tool plan. Executed: {results['tools_executed']}")
     return results
+
+
+def extract_context_product_id(business_context: Dict[str, Any]) -> Optional[str]:
+    for key in ("currentProductId", "productId"):
+        value = business_context.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    page_context = business_context.get("pageContext")
+    if isinstance(page_context, dict):
+        for key in ("currentProductId", "productId"):
+            value = page_context.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def first_resolved_product_id(results: Dict[str, Any]) -> Optional[str]:
+    for product in results.get("resolved_products", []):
+        product_id = str(product.get("productId") or "").strip()
+        if product_id:
+            return product_id
+    return None
