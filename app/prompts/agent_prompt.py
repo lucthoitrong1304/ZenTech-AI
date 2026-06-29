@@ -178,6 +178,13 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
 
 def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     lines = []
+
+    if results.get("auth_required"):
+        lines.append(
+            "YEU CAU DANG NHAP: Cau hoi can du lieu ca nhan cua khach hang, "
+            "nhung request AI khong co userId noi bo. Hay bao khach dang nhap de ZenTech AI tra cuu, "
+            "khong yeu cau khach gui email/so dien thoai trong chat."
+        )
     
     # Customer profile
     profile = results.get("customer_profile")
@@ -194,10 +201,23 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     if vouchers:
         lines.append(f"DANH SÁCH VOUCHER KHẢ DỤNG:\n{json.dumps(vouchers, ensure_ascii=False, indent=2)}")
 
+    promotions = results.get("promotions")
+    if promotions:
+        lines.append("DANH SACH KHUYEN MAI / VOUCHER PHU HOP:\n" + json.dumps(promotions, ensure_ascii=False, indent=2))
+
     # Orders info
     order = results.get("order_info")
     if order:
         lines.append(f"THÔNG TIN ĐƠN HÀNG TRA CỨU:\n{json.dumps(order, ensure_ascii=False, indent=2)}")
+
+    reviews = results.get("product_reviews")
+    if reviews:
+        lines.append(
+            "NOI DUNG DANH GIA SAN PHAM TRA CUU:\n"
+            + json.dumps(reviews, ensure_ascii=False, indent=2)
+            + "\nHuong dan: Neu khach hoi review tich cuc hay khong, hay dua vao rating va comment thuc te o tren. "
+            + "Phan loai ngan gon thanh tich cuc / trung lap / tieu cuc; neu comment trong thi noi ro gioi han."
+        )
 
     # Order tracking
     tracking = results.get("order_tracking")

@@ -30,6 +30,10 @@ def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
     if is_simple_small_talk(message):
         return ContextRouteDecision("SMALL_TALK", [], "heuristic_small_talk")
 
+    heuristic = route_common_lookup_intents(message, request)
+    if heuristic:
+        return heuristic
+
     # Otherwise, use LLM for robust intent classification and tool planning
     return classify_intent_via_llm(request)
 
@@ -54,6 +58,44 @@ def is_simple_small_talk(message: str) -> bool:
     words = message.split()
     greeting_tokens = ("chao", "hello", "hi", "thanks", "cam on")
     return len(words) <= 2 and any(token in message for token in greeting_tokens)
+
+
+def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> ContextRouteDecision | None:
+    has_product_context = bool(
+        request.businessContext.get("currentProductId")
+        or (
+            isinstance(request.businessContext.get("pageContext"), dict)
+            and request.businessContext["pageContext"].get("currentProductId")
+        )
+    )
+
+    if any(token in message for token in ("don hang", "order", "lich su mua", "mua hang")):
+        return ContextRouteDecision(
+            "ORDER_QA",
+            ["get_customer_orders", "get_order_detail", "get_order_status"],
+            "heuristic_order_lookup",
+        )
+
+    if any(token in message for token in ("voucher", "ma giam", "khuyen mai", "coupon")):
+        return ContextRouteDecision(
+            "PROMOTION_QA",
+            ["get_customer_vouchers", "get_promotions"],
+            "heuristic_promotion_lookup",
+        )
+
+    review_tokens = ("danh gia", "review", "nhan xet", "binh luan", "tich cuc", "tieu cuc", "sao")
+    reference_tokens = ("san pham nay", "san pham tren", "sp nay", "sp tren", "cai nay", "con nay", "no")
+    if any(token in message for token in review_tokens):
+        tools = ["get_product_reviews"]
+        if not has_product_context and not any(token in message for token in reference_tokens):
+            tools = ["product_search", "resolve_product_candidates", "get_product_reviews"]
+        return ContextRouteDecision(
+            "PRODUCT_QA",
+            tools,
+            "heuristic_product_review_lookup",
+        )
+
+    return None
 INTENT_ROUTING_PROMPT = """Bạn là Router phân loại ý định (Intent Router) cho hệ thống trợ lý ảo ZenTech.
 Nhiệm vụ của bạn là đọc tin nhắn của khách hàng, lịch sử hội thoại và thông tin đính kèm để phân loại ý định của khách hàng vào một trong các nhóm sau, đồng thời lập Tool Plan phù hợp:
 
