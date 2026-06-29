@@ -86,34 +86,47 @@ def setup_logging() -> None:
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "ai.log")
 
-    # Tạo TimedRotatingFileHandler xoay vòng hàng đêm, lưu lịch sử tối đa 30 ngày dạng UTF-8
-    file_handler = ArchivedTimedRotatingFileHandler(
-        log_file,
-        when="midnight",
-        interval=1,
-        backupCount=30,
-        encoding="utf-8"
-    )
-    file_handler.setLevel(logging.INFO)
-
-    # Format log tương thích với regex bóc tách của Java LokiService
-    # Bổ dung [%(trace_id)s] để khớp với regex bóc tách traceId
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] [%(trace_id)s] - %(message)s")
-    file_handler.setFormatter(formatter)
-    
-    # Gán filter để tiêm trace_id từ contextvars
-    trace_filter = TraceIdFilter()
-    file_handler.addFilter(trace_filter)
-
-    # Cấu hình root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
 
-    # Điều hướng uvicorn loggers sang ghi file luôn
+    file_handler = next(
+        (
+            handler
+            for handler in root_logger.handlers
+            if isinstance(handler, ArchivedTimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", None) == log_file
+        ),
+        None,
+    )
+
+    if file_handler is None:
+        file_handler = ArchivedTimedRotatingFileHandler(
+            log_file,
+            when="midnight",
+            interval=1,
+            backupCount=30,
+            encoding="utf-8",
+        )
+        root_logger.addHandler(file_handler)
+
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] [%(trace_id)s] - %(message)s")
+    )
+
+    if not any(isinstance(log_filter, TraceIdFilter) for log_filter in file_handler.filters):
+        file_handler.addFilter(TraceIdFilter())
+
+    ai_logger = logging.getLogger("ai-service")
+    ai_logger.setLevel(logging.INFO)
+    ai_logger.propagate = True
+
     for uvicorn_logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         uvicorn_logger = logging.getLogger(uvicorn_logger_name)
-        uvicorn_logger.addHandler(file_handler)
+        uvicorn_logger.setLevel(logging.INFO)
+        uvicorn_logger.propagate = False
+        if file_handler not in uvicorn_logger.handlers:
+            uvicorn_logger.addHandler(file_handler)
 
 def create_app() -> FastAPI:
     setup_logging()

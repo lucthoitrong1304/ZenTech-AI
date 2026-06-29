@@ -2,6 +2,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from app.core.logging_utils import truncate_text
 from app.schemas.agent import AgentRespondRequest
 from app.services.context_router import ContextRouteDecision
 from app.services.db_tool_client import (
@@ -17,7 +18,7 @@ from app.services.image_analysis_service import analyze_product_image
 from app.services.knowledge_search_service import search_knowledge
 from app.services.product_search_service import filter_explicit_product_matches, search_product_candidates
 
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("ai-service.tool-orchestrator")
 
 
 def extract_identifier(text: str) -> Optional[str]:
@@ -33,7 +34,7 @@ def extract_identifier(text: str) -> Optional[str]:
 
 
 def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecision) -> Dict[str, Any]:
-    logger.info(f"Executing tool plan for intent: {decision.intent} | Tools: {decision.tools}")
+    logger.info("Executing tool plan: intent=%s tools=%s", decision.intent, decision.tools)
     
     results: Dict[str, Any] = {
         "intent": decision.intent,
@@ -55,7 +56,7 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
     search_query = request.message
     if getattr(decision, "product_name", None):
         search_query = decision.product_name
-        logger.info(f"Overriding product search query with referenced product: '{search_query}'")
+        logger.info("Overriding product search query with referenced product preview='%s'", truncate_text(search_query, 120))
     
     # 1. Vision Model Analysis
     if "analyze_image" in decision.tools:
@@ -103,13 +104,16 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
                         c["score"] = 1.0
                         matched_candidates.append(c)
                 if matched_candidates:
-                    logger.info(f"Direct image match found for '{img_filename}'. Filtered down to {len(matched_candidates)} candidates.")
+                    logger.info("Direct image match found: file_name=%s candidates=%s", img_filename, len(matched_candidates))
                     candidates = matched_candidates
 
         results["product_candidates"] = filter_explicit_product_matches(
             search_query,
             candidates,
         )
+        logger.info("Product search tool completed: raw_candidates=%s filtered_candidates=%s", len(candidates), len(results["product_candidates"]))
+        if not results["product_candidates"]:
+            logger.warning("Product search tool found no suitable candidates")
         results["tools_executed"].append("product_search")
 
     # 3. Product Details Resolution from DB
@@ -144,6 +148,9 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             limit=request.agent.topK,
             score_threshold=request.agent.scoreThreshold
         )
+        logger.info("Knowledge search tool completed: contexts=%s", len(results["knowledge_context"]))
+        if not results["knowledge_context"]:
+            logger.warning("Knowledge search tool found no suitable context")
         results["tools_executed"].append("knowledge_search")
 
     # 5. Customer Profile Info
@@ -190,5 +197,5 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["warranty"] = warranty
             results["tools_executed"].append("get_warranty_status")
 
-    logger.info(f"Completed execution of tool plan. Executed: {results['tools_executed']}")
+    logger.info("Completed execution of tool plan: executed=%s", results["tools_executed"])
     return results

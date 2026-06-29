@@ -3,6 +3,7 @@ import logging
 from typing import Generator
 
 from app.config import settings
+from app.core.logging_utils import truncate_text
 from app.prompts.agent_prompt import build_agent_model_input
 from app.schemas.agent import (
     AgentRespondRequest,
@@ -14,7 +15,8 @@ from app.services.context_router import decide_context_tools
 from app.services.openai_client import build_client
 from app.services.tool_orchestrator import execute_tool_plan
 
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("ai-service.agent")
+llm_logger = logging.getLogger("ai-service.llm")
 
 
 def build_recommended_products(orchestrator_results: dict) -> list[RecommendedProductResponse]:
@@ -114,8 +116,14 @@ def _retrieved_context(orchestrator_results: dict) -> list[RetrievedContextRespo
 
 
 def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
-    logger.info("Generating agent reply for user request: %s", request.message)
+    logger.info(
+        "Received agent analysis request: agent_id=%s dataset_count=%s message_preview='%s'",
+        request.agent.id,
+        len(request.datasetIds),
+        truncate_text(request.message, 150),
+    )
     route = decide_context_tools(request)
+    logger.info("Agent route selected: intent=%s tools=%s", route.intent, route.tools)
     orchestrator_results = execute_tool_plan(request, route)
     extract_and_append_related_products(request, orchestrator_results)
     align_resolved_products_with_recommendations(orchestrator_results)
@@ -124,6 +132,7 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
 
     client = build_client()
     try:
+        llm_logger.info("Starting LLM call for agent reply: model=%s intent=%s", settings.chat_deployment_name, route.intent)
         if hasattr(client, "chat"):
             response = client.chat.completions.create(
                 model=settings.chat_deployment_name,
@@ -139,6 +148,13 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
             )
             content = response.output_text.strip()
 
+        llm_logger.info("LLM call completed for agent reply: response_length=%s", len(content))
+        logger.info(
+            "Agent analysis completed: intent=%s contexts=%s recommendations=%s",
+            route.intent,
+            len(orchestrator_results.get("knowledge_context", [])),
+            len(recommendations),
+        )
         return AgentRespondResponse(
             content=content,
             fallback=False,
@@ -146,8 +162,8 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
             retrievedContext=_retrieved_context(orchestrator_results),
             recommendedProducts=recommendations,
         )
-    except Exception as ex:
-        logger.error("Error calling LLM: %s", ex)
+    except Exception:
+        llm_logger.error("Error calling LLM for agent reply", exc_info=True)
         return AgentRespondResponse(
             content=request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này.",
             fallback=True,
@@ -158,16 +174,23 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
 
 
 def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, None, None]:
-    logger.info("Generating streaming agent reply for: %s", request.message)
+    logger.info(
+        "Received streaming agent analysis request: agent_id=%s dataset_count=%s message_preview='%s'",
+        request.agent.id,
+        len(request.datasetIds),
+        truncate_text(request.message, 150),
+    )
     recommendations: list[RecommendedProductResponse] = []
     try:
         route = decide_context_tools(request)
+        logger.info("Streaming agent route selected: intent=%s tools=%s", route.intent, route.tools)
         orchestrator_results = execute_tool_plan(request, route)
         extract_and_append_related_products(request, orchestrator_results)
         align_resolved_products_with_recommendations(orchestrator_results)
         recommendations = build_recommended_products(orchestrator_results)
         messages = build_agent_model_input(request, orchestrator_results)
         client = build_client()
+        llm_logger.info("Starting streaming LLM call: model=%s intent=%s", settings.chat_deployment_name, route.intent)
         if hasattr(client, "chat"):
             response = client.chat.completions.create(
                 model=settings.chat_deployment_name,
@@ -185,8 +208,10 @@ def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, 
                 input=messages,
             )
             yield _sse_event("chunk", {"content": response.output_text})
-    except Exception as ex:
-        logger.error("Error calling LLM stream: %s", ex)
+        llm_logger.info("Streaming LLM call completed")
+        logger.info("Streaming agent analysis completed: recommendations=%s", len(recommendations))
+    except Exception:
+        llm_logger.error("Error calling streaming LLM", exc_info=True)
         fallback = request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này."
         yield _sse_event("chunk", {"content": fallback})
     finally:

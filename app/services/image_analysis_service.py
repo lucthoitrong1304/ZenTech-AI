@@ -1,8 +1,9 @@
 import logging
 from app.config import settings
+from app.core.logging_utils import truncate_text
 from app.services.openai_client import build_client
 
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("ai-service.image-analysis")
 
 
 def analyze_product_image(image_url: str) -> str:
@@ -10,7 +11,7 @@ def analyze_product_image(image_url: str) -> str:
     Calls the Vision model (Azure OpenAI) to analyze the product image
     and return a text-based search query in Vietnamese.
     """
-    logger.info(f"Analyzing product image via vision model: {image_url}")
+    logger.info("Starting product image analysis via vision model: has_image_url=%s", bool(image_url))
 
     messages = [
         {
@@ -59,9 +60,9 @@ def analyze_product_image(image_url: str) -> str:
             )
             description = response.output_text.strip()
 
-        logger.info(f"Vision analysis completed. Search query generated: {description}")
+        logger.info("Vision analysis completed: query_preview='%s'", truncate_text(description, 120))
         return description
 
-    except Exception as ex:
-        logger.error(f"Failed to analyze product image via vision model: {str(ex)}")
+    except Exception:
+        logger.error("Failed to analyze product image via vision model", exc_info=True)
         return "sản phẩm trong hình ảnh"

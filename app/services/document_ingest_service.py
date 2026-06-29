@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from app.schemas.agent import KnowledgeIngestRequest
@@ -5,13 +6,21 @@ from app.schemas.rag import QdrantDocument
 from app.services.qdrant_tools import delete_document_points, insert_documents
 from app.utils.document_text import extract_text
 
+logger = logging.getLogger("ai-service.rag")
+
 MAX_CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 160
 
 
 def ingest_document(request: KnowledgeIngestRequest) -> int:
-    text = extract_text(request.contentBase64, request.contentType, request.fileName)
-    chunks = chunk_text(text)
+    logger.info("Starting knowledge document ingest: file_name=%s content_type=%s dataset_id=%s document_id=%s", request.fileName, request.contentType, request.datasetId, request.documentId)
+    try:
+        text = extract_text(request.contentBase64, request.contentType, request.fileName)
+        chunks = chunk_text(text)
+    except Exception:
+        logger.error("Failed to extract or chunk knowledge document: document_id=%s", request.documentId, exc_info=True)
+        raise
+    logger.info("Knowledge document chunked: document_id=%s chunks=%s", request.documentId, len(chunks))
     documents = [
         QdrantDocument(
             id=str(uuid4()),
@@ -31,8 +40,13 @@ def ingest_document(request: KnowledgeIngestRequest) -> int:
         for index, chunk in enumerate(chunks)
     ]
 
-    delete_document_points(request.documentId)
-    insert_documents(documents)
+    try:
+        delete_document_points(request.documentId)
+        insert_documents(documents)
+    except Exception:
+        logger.error("Failed to ingest knowledge document into Qdrant: document_id=%s", request.documentId, exc_info=True)
+        raise
+    logger.info("Knowledge document ingest completed: document_id=%s chunks=%s", request.documentId, len(documents))
     return len(documents)
 
 
