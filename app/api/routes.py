@@ -28,6 +28,9 @@ from app.services.qdrant_tools import count_product_variant_points, delete_docum
 from app.schemas.admin_logs import AdminLogExplainRequest, AdminLogExplainResponse
 from app.services.admin_logs_service import explain_log_error
 
+from app.schemas.admin_chat import AdminChatFollowUpRequest, AdminChatFollowUpResponse
+from app.services.admin_chat_service import chat_follow_up
+
 from app.schemas.admin_incidents import IncidentAnalyzeRequest, IncidentAnalyzeResponse
 from app.services.admin_incidents_service import analyze_incident_data
 
@@ -203,6 +206,19 @@ def explain_log(request: AdminLogExplainRequest) -> AdminLogExplainResponse:
         raise HTTPException(status_code=502, detail="AI service returned an empty explanation")
 
     return AdminLogExplainResponse(explanation=explanation)
+
+
+@router.post("/admin/chat/follow-up", response_model=AdminChatFollowUpResponse)
+def follow_up_chat(request: AdminChatFollowUpRequest) -> AdminChatFollowUpResponse:
+    try:
+        content = chat_follow_up(request)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="AI service failed to generate chat follow-up") from exc
+
+    if not content:
+        raise HTTPException(status_code=502, detail="AI service returned an empty chat follow-up")
+
+    return AdminChatFollowUpResponse(content=content)
 
 
 @router.post("/admin/incidents/analyze", response_model=IncidentAnalyzeResponse)
