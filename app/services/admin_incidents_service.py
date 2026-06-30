@@ -5,6 +5,7 @@ from app.config import settings
 from app.prompts.admin_incidents_prompt import SYSTEM_PROMPT_ADMIN_INCIDENTS
 from app.schemas.admin_incidents import IncidentAnalyzeRequest, IncidentAnalyzeResponse
 from app.services.openai_client import build_client
+from app.utils.code_reader import get_code_context_from_stack_trace
 
 logger = logging.getLogger("ai-service.admin")
 llm_logger = logging.getLogger("ai-service.llm")
@@ -41,8 +42,15 @@ def analyze_incident_data(request: IncidentAnalyzeRequest) -> IncidentAnalyzeRes
             f"Desc: {act.get('description')}\n"
         )
 
+    code_context = get_code_context_from_stack_trace(inc.service_name, inc.stack_trace)
+
     user_content = (
         f"=== THÔNG TIN SỰ CỐ ===\n{incident_details}\n"
+    )
+    if code_context:
+        user_content += f"=== MÃ NGUỒN GÂY LỖI THỰC TẾ ===\n{code_context}\n"
+        
+    user_content += (
         f"=== LOGS LIÊN QUAN (LOKI) ===\n{logs_details}\n"
         f"=== HÀNH VI USER TRƯỚC LỖI (ACTIVITY LOGS) ===\n{activity_details if activity_details else 'Không có dữ liệu hoạt động.'}\n"
     )

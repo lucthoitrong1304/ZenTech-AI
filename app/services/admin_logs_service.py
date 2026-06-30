@@ -4,6 +4,7 @@ from app.config import settings
 from app.prompts.admin_logs_prompt import SYSTEM_PROMPT_ADMIN_LOGS
 from app.schemas.admin_logs import AdminLogExplainRequest
 from app.services.openai_client import build_client
+from app.utils.code_reader import get_code_context_from_stack_trace
 
 logger = logging.getLogger("ai-service.admin")
 llm_logger = logging.getLogger("ai-service.llm")
@@ -16,7 +17,14 @@ def explain_log_error(request: AdminLogExplainRequest) -> str:
         len(request.log_message or ""),
         len(request.log_details or ""),
     )
+    # Tìm mã nguồn lỗi từ log details hoặc log message
+    code_context = get_code_context_from_stack_trace(request.service, request.log_details or "")
+    if not code_context and request.log_message:
+        code_context = get_code_context_from_stack_trace(request.service, request.log_message)
+
     user_content = f"Dịch vụ: {request.service}\nThông điệp: {request.log_message}\nChi tiết: {request.log_details}"
+    if code_context:
+        user_content += f"\n=== MÃ NGUỒN GÂY LỖI THỰC TẾ ===\n{code_context}"
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT_ADMIN_LOGS},
