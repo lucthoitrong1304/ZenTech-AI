@@ -176,6 +176,9 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
         for title, content in detail_sections:
             if content and str(content).strip():
                 lines.append(f"   - {title} (Markdown):\n{str(content).strip()}")
+        variant_lines = build_variant_lines(prod)
+        if variant_lines:
+            lines.append("   - DANH SÁCH BIẾN THỂ:\n" + "\n".join(variant_lines))
     return "\n".join(lines)
 
 
@@ -193,6 +196,28 @@ def build_price_line(product: Dict[str, Any]) -> str:
             return f"Giá sale hiện tại: {sale_value:,.0f} VND (giá gốc: {original_value:,.0f} VND{suffix})"
 
     return f"Giá hiện tại: {price:,.0f} VND"
+
+
+def build_variant_lines(product: Dict[str, Any]) -> List[str]:
+    variants = product.get("variants") or []
+    if not isinstance(variants, list):
+        return []
+
+    lines: List[str] = []
+    for idx, variant in enumerate(variants, 1):
+        if not isinstance(variant, dict):
+            continue
+
+        name = variant.get("variantName") or "Không tên"
+        color = variant.get("nameColor")
+        color_code = variant.get("colorCode")
+        color_parts = [str(item) for item in (color, color_code) if item]
+        color_text = f", màu: {' / '.join(color_parts)}" if color_parts else ""
+        stock = variant.get("stock")
+        stock_text = f", tồn kho: {stock} sản phẩm" if stock is not None else ""
+        lines.append(f"     {idx}. {name}{color_text} - {build_price_line(variant)}{stock_text}")
+
+    return lines
 
 
 def build_sale_window_text(product: Dict[str, Any]) -> str | None:
