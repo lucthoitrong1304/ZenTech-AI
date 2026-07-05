@@ -17,7 +17,7 @@ def make_request(
         message=message,
         businessContext=business_context
         or {
-            "userId": "account-1",
+            "toolAccessToken": "delegated-token",
             "conversationId": "conversation-1",
             "pageContext": {"currentProductId": "product-1"},
         },
@@ -28,7 +28,7 @@ def test_orchestrator_calls_product_review_tool_from_page_context(monkeypatch) -
     calls = []
 
     def fake_get_product_reviews(product_id, context, page=0, size=5):
-        calls.append((product_id, context["userId"], size))
+        calls.append((product_id, context["toolAccessToken"], size))
         return [{"rating": 5, "comment": "Rất tốt"}]
 
     monkeypatch.setattr(
@@ -41,7 +41,7 @@ def test_orchestrator_calls_product_review_tool_from_page_context(monkeypatch) -
         ContextRouteDecision("PRODUCT_QA", ["get_product_reviews"], "test"),
     )
 
-    assert calls == [("product-1", "account-1", 5)]
+    assert calls == [("product-1", "delegated-token", 5)]
     assert result["product_reviews"][0]["comment"] == "Rất tốt"
     assert "get_product_reviews" in result["tools_executed"]
 
@@ -75,7 +75,7 @@ def test_orchestrator_prefers_resolved_product_over_page_context_for_reviews(mon
         make_request(
             message="Tui muốn tra cứu đánh giá của sản phẩm power strip",
             business_context={
-                "userId": "account-1",
+                "toolAccessToken": "delegated-token",
                 "conversationId": "conversation-1",
                 "pageContext": {"currentProductId": "stale-page-product"},
             },
@@ -92,7 +92,7 @@ def test_orchestrator_prefers_resolved_product_over_page_context_for_reviews(mon
     assert result["product_reviews"][0]["comment"] == "Sản phẩm tuyệt vời"
 
 
-def test_personal_tools_without_user_id_mark_auth_required() -> None:
+def test_personal_tools_without_tool_access_token_mark_auth_required() -> None:
     result = execute_tool_plan(
         make_request(
             message="Địa chỉ giao hàng của tôi là gì?",

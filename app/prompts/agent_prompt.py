@@ -39,7 +39,7 @@ def build_agent_model_input(
         )
     })
 
-    # 3. Business Context (UserId, Role, etc.)
+    # 3. Business Context (role, conversation, safe page context, etc.)
     business_context = build_business_context_message(request.businessContext)
     if business_context:
         messages.append({"role": "system", "content": business_context})
@@ -120,7 +120,8 @@ def build_business_context_message(context: Dict[str, Any]) -> str | None:
     if not context:
         return None
 
-    lines = [f"- {key}: {value}" for key, value in context.items() if value is not None]
+    sensitive_keys = {"toolAccessToken", "accessToken", "authorization", "Authorization"}
+    lines = [f"- {key}: {value}" for key, value in context.items() if value is not None and key not in sensitive_keys]
     if not lines:
         return None
     return "NGỮ CẢNH HỆ THỐNG / THÔNG TIN PHIÊN CHAT:\n" + "\n".join(lines)
@@ -182,7 +183,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     if results.get("auth_required"):
         lines.append(
             "YÊU CẦU ĐĂNG NHẬP: Câu hỏi cần dữ liệu cá nhân của khách hàng, "
-            "nhưng request AI không có userId nội bộ. Hãy báo khách đăng nhập để ZenTech AI tra cứu, "
+            "nhưng request AI không có phiên xác thực hợp lệ. Hãy báo khách đăng nhập để ZenTech AI tra cứu, "
             "không yêu cầu khách gửi email/số điện thoại trong chat."
         )
     
@@ -225,7 +226,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     reviews = results.get("product_reviews")
     if reviews:
         lines.append(
-            "NOI DUNG DANH GIA SAN PHAM TRA CUU:\n"
+            "NỘI DUNG ĐÁNH GIÁ SẢN PHẨM TRA CỨU:\n"
             + json.dumps(reviews, ensure_ascii=False, indent=2)
             + "\nHướng dẫn: Nếu khách hỏi review tích cực hay không, hãy dựa vào rating và comment thực tế ở trên. "
             + "Phân loại ngắn gọn thành tích cực / trung lập / tiêu cực; nếu comment trống thì nói rõ giới hạn."
@@ -244,7 +245,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     if not lines:
         return None
     
-    return "THÔNG TIN NGHIỆP VỤ TỪ DATABASE TRUY XUẤT QUA API NỘI BỘ:\n\n" + "\n\n".join(lines)
+    return "THÔNG TIN NGHIỆP VỤ TỪ DATABASE TRUY XUẤT QUA API BE ĐÃ XÁC THỰC:\n\n" + "\n\n".join(lines)
 
 
 def build_knowledge_context_message(context: List[Any]) -> str | None:
