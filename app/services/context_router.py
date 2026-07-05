@@ -62,6 +62,53 @@ def is_simple_small_talk(message: str) -> bool:
     return len(words) <= 2 and any(token in message for token in greeting_tokens)
 
 
+def extract_catalog_category_name(message: str) -> str | None:
+    category_aliases = (
+        ("ban phim", "keyboards"),
+        ("keyboard", "keyboards"),
+        ("keyboards", "keyboards"),
+        ("phim co", "keyboards"),
+        ("he keyboard", "HE Keyboard"),
+        ("mechanical keyboard", "Mechanical Keyboard"),
+        ("sac", "chargers"),
+        ("cu sac", "chargers"),
+        ("bo sac", "chargers"),
+        ("charger", "chargers"),
+        ("chargers", "chargers"),
+    )
+    for alias, category_name in category_aliases:
+        if alias in message:
+            return category_name
+    return None
+
+
+def is_catalog_overview_query(message: str) -> bool:
+    overview_tokens = (
+        "cua hang ban gi",
+        "shop ban gi",
+        "ban nhung gi",
+        "mat hang",
+        "nganh hang",
+        "dang kinh doanh",
+        "danh muc nao",
+        "danh muc gi",
+        "cac danh muc",
+        "trong danh muc",
+        "toan bo san pham",
+        "tat ca san pham",
+        "nhung san pham nao",
+        "co nhung san pham nao",
+    )
+    category_lookup_tokens = (
+        "co ban",
+        "co kinh doanh",
+        "co hang",
+        "thuoc danh muc nao",
+        "thuoc danh muc gi",
+    )
+    return any(token in message for token in overview_tokens) or any(token in message for token in category_lookup_tokens)
+
+
 def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> ContextRouteDecision | None:
     has_product_context = bool(
         request.businessContext.get("currentProductId")
@@ -106,6 +153,14 @@ def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> C
             "PRODUCT_QA",
             ["get_sale_products"],
             "heuristic_sale_product_lookup",
+        )
+
+    if is_catalog_overview_query(message):
+        return ContextRouteDecision(
+            "PRODUCT_QA",
+            ["get_catalog_overview"],
+            "heuristic_catalog_overview_lookup",
+            category_name=extract_catalog_category_name(message),
         )
 
     if any(token in message for token in ("voucher", "ma giam", "khuyen mai", "coupon")):
@@ -174,6 +229,14 @@ Quy tắc quan trọng:
   "category_name": "Tên danh mục được trích xuất (nếu có, ví dụ: 'chargers' hoặc 'keyboards'), ngược lại là null",
   "product_name": "Tên sản phẩm được trích xuất hoặc tham chiếu từ lịch sử chat (nếu có, ví dụ: 'Power Strip'), ngược lại là null"
 }
+"""
+
+INTENT_ROUTING_PROMPT += """
+
+Bổ sung quan trọng về tool catalog:
+- `get_catalog_overview`: Dùng cho câu hỏi tổng quát về cửa hàng bán gì, các mặt hàng/danh mục đang kinh doanh, một loại hàng có được kinh doanh hay không, hoặc sản phẩm vừa nêu thuộc danh mục nào.
+- `product_search`: Chỉ dùng khi khách hàng tìm/hỏi/tư vấn một sản phẩm cụ thể hoặc nhu cầu sản phẩm cụ thể. Không dùng `product_search` để trả lời toàn bộ catalog vì nó chỉ trả về một số kết quả semantic topK.
+- Nếu khách hỏi "có bán bàn phím/keyboards/chargers/..." hãy trích `category_name` và chọn ["get_catalog_overview"].
 """
 
 def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecision:

@@ -66,6 +66,10 @@ def build_agent_model_input(
             "content": "KẾT QUẢ TRA CỨU SẢN PHẨM: Không tìm thấy sản phẩm nào khớp trong cơ sở dữ liệu."
         })
 
+    catalog_context = build_catalog_overview_message(orchestrator_results.get("catalog_overview"))
+    if catalog_context:
+        messages.append({"role": "system", "content": catalog_context})
+
     # 6. Business DB Tool Results (Orders, Vouchers, Points, Warranty)
     db_context = build_db_tool_context_message(orchestrator_results)
     if db_context:
@@ -165,6 +169,10 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
             f"   - Đánh giá: {prod.get('rating') or 'Chưa có'} sao ({prod.get('reviewCount') or 0} đánh giá)\n"
             f"   - Độ tin cậy tìm kiếm: {confidence} (Score={score:.3f})"
         )
+        category_line = build_product_category_line(prod)
+        if category_line:
+            lines.append(f"   - Danh mục: {category_line}")
+
         detail_sections = [
             ("MÔ TẢ CHI TIẾT", prod.get("description")),
             ("THÔNG SỐ KỸ THUẬT", prod.get("specifications")),
@@ -180,6 +188,83 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
         if variant_lines:
             lines.append("   - DANH SÁCH BIẾN THỂ:\n" + "\n".join(variant_lines))
     return "\n".join(lines)
+
+
+def build_catalog_overview_message(catalog: Any) -> str | None:
+    if not isinstance(catalog, dict) or not catalog:
+        return None
+
+    categories = catalog.get("categories") or []
+    if not isinstance(categories, list):
+        categories = []
+
+    lines = [
+        "TỔNG QUAN DANH MỤC VÀ MẶT HÀNG THỰC TẾ TỪ DATABASE (SOURCE OF TRUTH):",
+        "Hướng dẫn trả lời: Dùng khối này cho câu hỏi tổng quát như cửa hàng bán gì, có bán một loại hàng nào không, hoặc các mặt hàng đang kinh doanh. Nếu danh mục tồn tại nhưng activeProductCount = 0, nói rõ hiện danh mục đó chưa có sản phẩm active/chưa nhập hàng, không kết luận cửa hàng không kinh doanh danh mục đó.",
+    ]
+
+    category_query = catalog.get("categoryQuery")
+    if category_query:
+        matched = "có" if catalog.get("categoryMatched") else "không"
+        lines.append(f"- Truy vấn danh mục của khách: {category_query} (categoryMatched={matched})")
+
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        category_name = str(category.get("categoryName") or "").strip()
+        short_name = str(category.get("shortName") or "").strip()
+        parent_name = str(category.get("parentName") or "").strip()
+        display_parts = [category_name]
+        if short_name and short_name not in display_parts:
+            display_parts.append(short_name)
+        display_name = " / ".join(part for part in display_parts if part)
+        parent_suffix = f" (thuộc {parent_name})" if parent_name else ""
+        active_count = category.get("activeProductCount") or 0
+        lines.append(f"- {display_name}{parent_suffix}: {active_count} sản phẩm active")
+
+        sample_products = category.get("sampleProducts") or []
+        for product in sample_products:
+            if not isinstance(product, dict):
+                continue
+            price = product.get("salePrice") or product.get("price")
+            price_text = f", giá {float(price):,.0f} VND" if isinstance(price, (int, float)) else ""
+            stock = product.get("stock")
+            stock_text = f", tồn kho {stock}" if stock is not None else ""
+            variant = product.get("variantName")
+            variant_text = f" - {variant}" if variant else ""
+            lines.append(f"  + {product.get('name')}{variant_text}{price_text}{stock_text}")
+
+    empty_categories = catalog.get("emptyCategories") or []
+    empty_names = [
+        str(category.get("categoryName") or category.get("shortName") or "").strip()
+        for category in empty_categories
+        if isinstance(category, dict)
+    ]
+    empty_names = [name for name in empty_names if name]
+    if empty_names:
+        lines.append("Danh mục hiện chưa có sản phẩm active/chưa nhập hàng: " + ", ".join(empty_names))
+
+    return "\n".join(lines)
+
+
+def build_product_category_line(product: Dict[str, Any]) -> str | None:
+    categories = product.get("categories") or []
+    if not isinstance(categories, list):
+        return None
+
+    names: list[str] = []
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        name = category.get("shortName") or category.get("categoryName")
+        parent = category.get("parentName")
+        if not name:
+            continue
+        label = f"{parent} > {name}" if parent else str(name)
+        if label not in names:
+            names.append(label)
+
+    return ", ".join(names) if names else None
 
 
 def build_price_line(product: Dict[str, Any]) -> str:

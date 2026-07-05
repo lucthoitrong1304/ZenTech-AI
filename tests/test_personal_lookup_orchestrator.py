@@ -122,7 +122,7 @@ def test_orchestrator_fetches_sale_products(monkeypatch) -> None:
 
     result = execute_tool_plan(
         make_request(
-            message="Co san pham nao dang sale ko?",
+            message="Có sản phẩm nào đang sale không?",
             business_context={"conversationId": "conversation-1"},
         ),
         ContextRouteDecision("PRODUCT_QA", ["get_sale_products"], "test"),
@@ -130,3 +130,70 @@ def test_orchestrator_fetches_sale_products(monkeypatch) -> None:
 
     assert result["resolved_products"][0]["salePrice"] == 990000
     assert "get_sale_products" in result["tools_executed"]
+
+
+def test_orchestrator_fetches_catalog_overview(monkeypatch) -> None:
+    calls = []
+
+    def fake_get_catalog_overview(context, category_name=None, products_per_category=3, include_empty=True):
+        calls.append((category_name, products_per_category, include_empty))
+        return {
+            "categoryQuery": category_name,
+            "categoryMatched": True,
+            "categories": [
+                {
+                    "categoryName": "Keyboards",
+                    "activeProductCount": 2,
+                    "sampleProducts": [
+                        {
+                            "productId": "catalog-product",
+                            "variantId": "catalog-variant",
+                            "name": "Mercury K1",
+                            "imageKey": "mercury.webp",
+                            "price": 1000000,
+                            "stock": 5,
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.tool_orchestrator.get_catalog_overview",
+        fake_get_catalog_overview,
+    )
+
+    result = execute_tool_plan(
+        make_request(
+            message="Cửa hàng có bán bàn phím không?",
+            business_context={"conversationId": "conversation-1"},
+        ),
+        ContextRouteDecision(
+            "PRODUCT_QA",
+            ["get_catalog_overview"],
+            "test",
+            category_name="keyboards",
+        ),
+    )
+
+    assert calls == [("keyboards", 3, True)]
+    assert result["catalog_overview"]["categoryMatched"] is True
+    assert "get_catalog_overview" in result["tools_executed"]
+
+
+def test_orchestrator_suppresses_catalog_recommendations_for_category_mapping(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.tool_orchestrator.get_catalog_overview",
+        lambda *args, **kwargs: {"categories": []},
+    )
+
+    result = execute_tool_plan(
+        make_request(
+            message="Các sản phẩm trên thuộc danh mục nào?",
+            business_context={"conversationId": "conversation-1"},
+        ),
+        ContextRouteDecision("PRODUCT_QA", ["get_catalog_overview"], "test"),
+    )
+
+    assert result["suppress_catalog_recommendations"] is True
+    assert "get_catalog_overview" in result["tools_executed"]
