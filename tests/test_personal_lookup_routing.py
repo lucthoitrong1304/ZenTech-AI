@@ -103,3 +103,10 @@ def test_category_product_listing_extracts_chargers_category() -> None:
     assert route.intent == "PRODUCT_QA"
     assert route.tools == ["get_catalog_overview"]
     assert route.category_name == "chargers"
+
+
+def test_human_handoff_routes_without_llm() -> None:
+    route = decide_context_tools(make_request("Cho mình gặp nhân viên tư vấn"))
+
+    assert route.intent == "HUMAN_HANDOFF"
+    assert route.tools == []
