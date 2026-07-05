@@ -65,3 +65,10 @@ def test_profile_lookup_routes_without_llm() -> None:
 
     assert route.intent == "CUSTOMER_ACCOUNT_QA"
     assert route.tools == ["get_customer_profile"]
+
+
+def test_sale_product_lookup_routes_without_llm() -> None:
+    route = decide_context_tools(make_request("Co san pham nao dang sale ko?"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["get_sale_products"]

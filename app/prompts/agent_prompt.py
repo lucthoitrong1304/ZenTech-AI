@@ -152,12 +152,13 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
         confidence = "Rất cao" if score >= 0.75 else ("Trung bình" if score >= 0.45 else "Thấp (Cần hỏi lại khách hàng để xác nhận)")
         
         variant_desc = f" (Biến thể: {prod.get('variantName')})" if prod.get("variantName") else ""
+        price_line = build_price_line(prod)
         lines.append(
             f"{idx}. {prod.get('name')}{variant_desc}\n"
             f"   - ProductId: {prod.get('productId')}\n"
             f"   - VariantId: {prod.get('variantId')}\n"
             f"   - Sku: {prod.get('sku')}\n"
-            f"   - Giá thực tế: {prod.get('price'):,.0f} VND\n"
+            f"   - {price_line}\n"
             f"   - Tồn kho: {prod.get('stock')} sản phẩm\n"
             f"   - Khuyến mãi: {prod.get('promotionInfo') or 'Không có'}\n"
             f"   - Đánh giá: {prod.get('rating') or 'Chưa có'} sao ({prod.get('reviewCount') or 0} đánh giá)\n"
@@ -175,6 +176,20 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
             if content and str(content).strip():
                 lines.append(f"   - {title} (Markdown):\n{str(content).strip()}")
     return "\n".join(lines)
+
+
+def build_price_line(product: Dict[str, Any]) -> str:
+    price = float(product.get("price") or 0)
+    original_price = product.get("originalPrice")
+    sale_price = product.get("salePrice")
+
+    if sale_price is not None and original_price is not None:
+        sale_value = float(sale_price)
+        original_value = float(original_price)
+        if sale_value < original_value:
+            return f"Giá sale hiện tại: {sale_value:,.0f} VND (giá gốc: {original_value:,.0f} VND)"
+
+    return f"Giá hiện tại: {price:,.0f} VND"
 
 
 def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:

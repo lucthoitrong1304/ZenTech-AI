@@ -103,3 +103,30 @@ def test_personal_tools_without_tool_access_token_mark_auth_required() -> None:
 
     assert result["auth_required"] is True
     assert "get_customer_addresses" not in result["tools_executed"]
+
+
+def test_orchestrator_fetches_sale_products(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.tool_orchestrator.get_sale_products",
+        lambda context, limit=10: [
+            {
+                "productId": "sale-product",
+                "variantId": "sale-variant",
+                "name": "Power Strip",
+                "price": 990000,
+                "originalPrice": 1200000,
+                "salePrice": 990000,
+            }
+        ],
+    )
+
+    result = execute_tool_plan(
+        make_request(
+            message="Co san pham nao dang sale ko?",
+            business_context={"conversationId": "conversation-1"},
+        ),
+        ContextRouteDecision("PRODUCT_QA", ["get_sale_products"], "test"),
+    )
+
+    assert result["resolved_products"][0]["salePrice"] == 990000
+    assert "get_sale_products" in result["tools_executed"]

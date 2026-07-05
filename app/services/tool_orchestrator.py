@@ -14,6 +14,7 @@ from app.services.db_tool_client import (
     get_order_tracking,
     get_product_reviews,
     get_promotions,
+    get_sale_products,
     get_return_requests,
     get_warranty_status,
     resolve_orders,
@@ -241,6 +242,11 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["tools_executed"].append("get_product_reviews")
         else:
             results["product_reviews"] = []
+
+    if "get_sale_products" in decision.tools:
+        sale_products = get_sale_products(context, limit=request.agent.topK)
+        results["resolved_products"] = sale_products
+        results["tools_executed"].append("get_sale_products")
 
     # 9. Warranty Info
     if "get_warranty_status" in decision.tools:

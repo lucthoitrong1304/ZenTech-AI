@@ -100,6 +100,14 @@ def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> C
             "heuristic_order_lookup",
         )
 
+    sale_tokens = ("dang sale", "san pham sale", "san pham nao sale", "giam gia", "uu dai san pham", "khuyen mai san pham")
+    if any(token in message for token in sale_tokens) or ("sale" in message and "voucher" not in message):
+        return ContextRouteDecision(
+            "PRODUCT_QA",
+            ["get_sale_products"],
+            "heuristic_sale_product_lookup",
+        )
+
     if any(token in message for token in ("voucher", "ma giam", "khuyen mai", "coupon")):
         return ContextRouteDecision(
             "PROMOTION_QA",

@@ -36,6 +36,8 @@ def build_recommended_products(orchestrator_results: dict) -> list[RecommendedPr
                 name=str(product.get("name") or ""),
                 imageKey=image_key,
                 price=float(product.get("price") or 0),
+                originalPrice=float(product["originalPrice"]) if product.get("originalPrice") is not None else None,
+                salePrice=float(product["salePrice"]) if product.get("salePrice") is not None else None,
                 stock=int(product.get("stock") or 0),
             )
         )
@@ -68,6 +70,8 @@ def extract_and_append_related_products(request: AgentRespondRequest, orchestrat
                     "name": item.get("name"),
                     "variantName": item.get("variantName"),
                     "price": float(item.get("price") or 0),
+                    "originalPrice": float(item["originalPrice"]) if item.get("originalPrice") is not None else None,
+                    "salePrice": float(item["salePrice"]) if item.get("salePrice") is not None else None,
                     "stock": int(item.get("stock") or 0),
                     "imageKey": item.get("imageKey"),
                     "description": "",

@@ -101,6 +101,16 @@ def get_product_reviews(product_id: str, context: Dict[str, Any], page: int = 0,
     return result if isinstance(result, list) else []
 
 
+def get_sale_products(context: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]]:
+    query = {
+        "limit": min(max(limit, 1), 20),
+    }
+    query_str = urllib.parse.urlencode(query)
+    url = f"{settings.spring_boot_api_url}/api/ai/tools/products/sale?{query_str}"
+    result = _make_request(url, "GET", context)
+    return result if isinstance(result, list) else []
+
+
 def get_customer_profile(user_id: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = f"{settings.spring_boot_api_url}/api/ai/tools/customers/me/profile"
     return _make_request(url, "GET", context)
