@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any, Dict, List
 
 from app.schemas.agent import AgentRespondRequest
@@ -187,9 +188,36 @@ def build_price_line(product: Dict[str, Any]) -> str:
         sale_value = float(sale_price)
         original_value = float(original_price)
         if sale_value < original_value:
-            return f"Giá sale hiện tại: {sale_value:,.0f} VND (giá gốc: {original_value:,.0f} VND)"
+            sale_window = build_sale_window_text(product)
+            suffix = f", {sale_window}" if sale_window else ""
+            return f"Giá sale hiện tại: {sale_value:,.0f} VND (giá gốc: {original_value:,.0f} VND{suffix})"
 
     return f"Giá hiện tại: {price:,.0f} VND"
+
+
+def build_sale_window_text(product: Dict[str, Any]) -> str | None:
+    start = format_sale_datetime(product.get("saleStartAt"))
+    end = format_sale_datetime(product.get("saleEndAt"))
+    if start and end:
+        return f"áp dụng từ {start} đến {end}"
+    if start:
+        return f"áp dụng từ {start}"
+    if end:
+        return f"áp dụng đến {end}"
+    return None
+
+
+def format_sale_datetime(value: Any) -> str | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    return parsed.strftime("%d/%m/%Y %H:%M")
 
 
 def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:

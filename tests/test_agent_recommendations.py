@@ -19,6 +19,8 @@ def test_recommendations_require_image_and_dedupe_without_truncating() -> None:
             "price": 10,
             "originalPrice": 12,
             "salePrice": 10,
+            "saleStartAt": "2026-07-01T00:00:00Z",
+            "saleEndAt": "2026-07-31T23:59:00Z",
             "stock": 2,
         },
         {"productId": "p1", "variantId": "v2", "name": "Duplicate", "imageKey": "duplicate.webp", "price": 20, "stock": 3},
@@ -33,6 +35,8 @@ def test_recommendations_require_image_and_dedupe_without_truncating() -> None:
     assert result[0].variantId == "v1"
     assert result[0].originalPrice == 12
     assert result[0].salePrice == 10
+    assert result[0].saleStartAt == "2026-07-01T00:00:00Z"
+    assert result[0].saleEndAt == "2026-07-31T23:59:00Z"
 
     context = {"resolved_products": products}
     align_resolved_products_with_recommendations(context)
@@ -97,3 +101,28 @@ def test_resolved_product_prompt_omits_original_price_without_sale() -> None:
 
     assert "Giá hiện tại: 1,200,000 VND" in message
     assert "giá gốc" not in message
+
+
+def test_resolved_product_prompt_includes_sale_window_when_present() -> None:
+    message = build_resolved_products_message(
+        [
+            {
+                "productId": "p1",
+                "variantId": "v1",
+                "name": "Power Strip",
+                "variantName": "US Plug",
+                "sku": "",
+                "price": 990_000,
+                "originalPrice": 1_200_000,
+                "salePrice": 990_000,
+                "saleStartAt": "2026-07-01T00:00:00Z",
+                "saleEndAt": "2026-07-31T23:59:00Z",
+                "stock": 50,
+                "rating": 0,
+                "reviewCount": 0,
+            }
+        ],
+        [{"productId": "p1", "variantId": "v1", "score": 0.9}],
+    )
+
+    assert "áp dụng từ 01/07/2026 00:00 đến 31/07/2026 23:59" in message
