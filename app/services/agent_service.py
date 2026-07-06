@@ -242,8 +242,10 @@ def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, 
         truncate_text(request.message, 150),
     )
     recommendations: list[RecommendedProductResponse] = []
+    handoff_recommended = False
     try:
         route = decide_context_tools(request)
+        handoff_recommended = route.intent == "HUMAN_HANDOFF"
         logger.info("Streaming agent route selected: intent=%s tools=%s", route.intent, route.tools)
         orchestrator_results = execute_tool_plan(request, route)
         extract_and_append_related_products(request, orchestrator_results)
@@ -274,9 +276,13 @@ def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, 
     except Exception:
         llm_logger.error("Error calling streaming LLM", exc_info=True)
         fallback = request.agent.fallbackMessage or "Tôi chưa có đủ thông tin để trả lời câu hỏi này."
+        handoff_recommended = True
         yield _sse_event("chunk", {"content": fallback})
     finally:
         yield _sse_event(
             "complete",
-            {"recommendedProducts": [item.model_dump() for item in recommendations]},
+            {
+                "recommendedProducts": [item.model_dump() for item in recommendations],
+                "handoffRecommended": handoff_recommended,
+            },
         )

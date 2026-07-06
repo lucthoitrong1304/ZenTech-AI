@@ -1,11 +1,14 @@
 import json
 
 from app.prompts.agent_prompt import build_catalog_overview_message, build_resolved_products_message
+from app.schemas.agent import AgentRespondRequest, RuntimeAgentConfig
+from app.services import agent_service
 from app.services.agent_service import (
     _sse_event,
     align_resolved_products_with_recommendations,
     build_recommended_products,
 )
+from app.services.context_router import ContextRouteDecision
 
 
 def test_recommendations_require_image_and_dedupe_without_truncating() -> None:
@@ -163,11 +166,48 @@ def test_suppressed_catalog_recommendations_do_not_create_cards() -> None:
 
 
 def test_sse_event_contains_named_json_payload() -> None:
-    event = _sse_event("complete", {"recommendedProducts": []})
+    event = _sse_event("complete", {"recommendedProducts": [], "handoffRecommended": False})
     lines = event.strip().splitlines()
 
     assert lines[0] == "event: complete"
-    assert json.loads(lines[1].removeprefix("data: ")) == {"recommendedProducts": []}
+    assert json.loads(lines[1].removeprefix("data: ")) == {
+        "recommendedProducts": [],
+        "handoffRecommended": False,
+    }
+
+
+def test_stream_complete_includes_handoff_recommendation(monkeypatch) -> None:
+    request = AgentRespondRequest(
+        agent=RuntimeAgentConfig(
+            id="agent-1",
+            name="ZenTech AI",
+            systemPrompt="Trả lời ngắn gọn.",
+        ),
+        role="CUSTOMER",
+        message="Cho mình gặp nhân viên tư vấn",
+    )
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            return type("FakeResponse", (), {"output_text": "Đang kết nối nhân viên hỗ trợ."})()
+
+    class FakeClient:
+        responses = FakeResponses()
+
+    monkeypatch.setattr(
+        agent_service,
+        "decide_context_tools",
+        lambda _: ContextRouteDecision("HUMAN_HANDOFF", [], "test"),
+    )
+    monkeypatch.setattr(agent_service, "execute_tool_plan", lambda _request, _route: {})
+    monkeypatch.setattr(agent_service, "build_agent_model_input", lambda _request, _results: [])
+    monkeypatch.setattr(agent_service, "build_client", lambda: FakeClient())
+
+    events = list(agent_service.generate_agent_reply_stream(request))
+    complete_event = events[-1].strip().splitlines()
+
+    assert complete_event[0] == "event: complete"
+    assert json.loads(complete_event[1].removeprefix("data: "))["handoffRecommended"] is True
 
 
 def test_resolved_product_prompt_includes_markdown_details_and_sale_price() -> None:

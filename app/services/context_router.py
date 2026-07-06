@@ -32,6 +32,9 @@ def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
     if is_simple_small_talk(message):
         return ContextRouteDecision("SMALL_TALK", [], "heuristic_small_talk")
 
+    if is_human_handoff_request(message):
+        return ContextRouteDecision("HUMAN_HANDOFF", [], "heuristic_human_handoff")
+
     heuristic = route_common_lookup_intents(message, request)
     if heuristic:
         return heuristic
@@ -60,6 +63,30 @@ def is_simple_small_talk(message: str) -> bool:
     words = message.split()
     greeting_tokens = ("chao", "hello", "hi", "thanks", "cam on")
     return len(words) <= 2 and any(token in message for token in greeting_tokens)
+
+
+def is_human_handoff_request(message: str) -> bool:
+    request_tokens = (
+        "gặp nhân viên",
+        "gặp tư vấn viên",
+        "gặp người tư vấn",
+        "gặp người thật",
+        "nói chuyện với nhân viên",
+        "nói chuyện với tư vấn viên",
+        "kết nối nhân viên",
+        "kết nối tư vấn viên",
+        "cho mình gặp nhân viên",
+        "cho tôi gặp nhân viên",
+        "cần nhân viên hỗ trợ",
+        "cần tư vấn viên hỗ trợ",
+        "yêu cầu nhân viên",
+        "yêu cầu tư vấn viên",
+        "human support",
+        "live agent",
+        "real person",
+        "staff support",
+    )
+    return any(normalize(token) in message for token in request_tokens)
 
 
 def extract_catalog_category_name(message: str) -> str | None:
