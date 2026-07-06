@@ -111,6 +111,24 @@ def get_sale_products(context: Dict[str, Any], limit: int = 10) -> List[Dict[str
     return result if isinstance(result, list) else []
 
 
+def get_catalog_overview(
+    context: Dict[str, Any],
+    category_name: Optional[str] = None,
+    products_per_category: int = 3,
+    include_empty: bool = True,
+) -> Optional[Dict[str, Any]]:
+    query = {
+        "productsPerCategory": min(max(products_per_category, 1), 5),
+        "includeEmpty": str(include_empty).lower(),
+    }
+    if category_name:
+        query["categoryName"] = category_name
+    query_str = urllib.parse.urlencode(query)
+    url = f"{settings.spring_boot_api_url}/api/ai/tools/catalog/overview?{query_str}"
+    result = _make_request(url, "GET", context)
+    return result if isinstance(result, dict) else None
+
+
 def get_customer_profile(user_id: str, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     url = f"{settings.spring_boot_api_url}/api/ai/tools/customers/me/profile"
     return _make_request(url, "GET", context)

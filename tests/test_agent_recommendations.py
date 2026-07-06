@@ -1,6 +1,6 @@
 import json
 
-from app.prompts.agent_prompt import build_resolved_products_message
+from app.prompts.agent_prompt import build_catalog_overview_message, build_resolved_products_message
 from app.services.agent_service import (
     _sse_event,
     align_resolved_products_with_recommendations,
@@ -64,6 +64,104 @@ def test_recommendations_pick_lowest_price_variant_per_product() -> None:
     ]
 
 
+def test_recommendations_include_catalog_sample_products_with_images() -> None:
+    result = build_recommended_products(
+        {
+            "catalog_overview": {
+                "categories": [
+                    {
+                        "categoryName": "Chargers",
+                        "sampleProducts": [
+                            {
+                                "productId": "catalog-product",
+                                "variantId": "catalog-variant",
+                                "name": "Alpha65 GaN 65W Wall Charger",
+                                "imageKey": "alpha65.webp",
+                                "price": 950_000,
+                                "originalPrice": 1_100_000,
+                                "salePrice": None,
+                                "stock": 28,
+                            },
+                            {
+                                "productId": "no-image",
+                                "name": "No image",
+                                "price": 100,
+                                "stock": 1,
+                            },
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    assert [item.productId for item in result] == ["catalog-product"]
+    assert result[0].imageKey == "alpha65.webp"
+    assert result[0].price == 950_000
+
+
+def test_resolved_products_take_priority_over_catalog_samples() -> None:
+    result = build_recommended_products(
+        {
+            "resolved_products": [
+                {
+                    "productId": "same-product",
+                    "variantId": "resolved-variant",
+                    "name": "Resolved Product",
+                    "imageKey": "resolved.webp",
+                    "price": 900_000,
+                    "stock": 10,
+                }
+            ],
+            "catalog_overview": {
+                "categories": [
+                    {
+                        "sampleProducts": [
+                            {
+                                "productId": "same-product",
+                                "variantId": "catalog-variant",
+                                "name": "Catalog Product",
+                                "imageKey": "catalog.webp",
+                                "price": 800_000,
+                                "stock": 5,
+                            }
+                        ]
+                    }
+                ]
+            },
+        }
+    )
+
+    assert len(result) == 1
+    assert result[0].variantId == "resolved-variant"
+    assert result[0].imageKey == "resolved.webp"
+
+
+def test_suppressed_catalog_recommendations_do_not_create_cards() -> None:
+    result = build_recommended_products(
+        {
+            "suppress_catalog_recommendations": True,
+            "catalog_overview": {
+                "categories": [
+                    {
+                        "sampleProducts": [
+                            {
+                                "productId": "catalog-product",
+                                "name": "Mercury K1",
+                                "imageKey": "mercury.webp",
+                                "price": 1_000_000,
+                                "stock": 5,
+                            }
+                        ]
+                    }
+                ]
+            },
+        }
+    )
+
+    assert result == []
+
+
 def test_sse_event_contains_named_json_payload() -> None:
     event = _sse_event("complete", {"recommendedProducts": []})
     lines = event.strip().splitlines()
@@ -87,6 +185,13 @@ def test_resolved_product_prompt_includes_markdown_details_and_sale_price() -> N
                 "stock": 50,
                 "rating": 0,
                 "reviewCount": 0,
+                "categories": [
+                    {
+                        "categoryName": "Hall Effect Keyboard",
+                        "shortName": "HE Keyboard",
+                        "parentName": "Keyboards",
+                    }
+                ],
                 "description": "## Power Strip\n\nDetailed product content.",
                 "specifications": "## Specifications\n\nUS Plug.",
                 "variants": [
@@ -110,6 +215,7 @@ def test_resolved_product_prompt_includes_markdown_details_and_sale_price() -> N
     assert "DANH" in message
     assert "Power Strip / #1A1A1A" in message
     assert "US Plug" in message
+    assert "Keyboards > HE Keyboard" in message
     assert "MÔ TẢ CHI TIẾT" in message
     assert "Giá sale hiện tại: 990,000 VND (giá gốc: 1,200,000 VND)" in message
 
@@ -136,6 +242,45 @@ def test_resolved_product_prompt_omits_original_price_without_sale() -> None:
 
     assert "Giá hiện tại: 1,200,000 VND" in message
     assert "giá gốc" not in message
+
+
+def test_catalog_overview_prompt_groups_categories_and_empty_categories() -> None:
+    message = build_catalog_overview_message(
+        {
+            "categoryQuery": "keyboards",
+            "categoryMatched": True,
+            "categories": [
+                {
+                    "categoryName": "Hall Effect Keyboard",
+                    "shortName": "HE Keyboard",
+                    "parentName": "Keyboards",
+                    "activeProductCount": 1,
+                    "sampleProducts": [
+                        {
+                            "name": "Mercury K1",
+                            "variantName": "US Plug",
+                            "price": 1_000_000,
+                            "stock": 5,
+                        }
+                    ],
+                }
+            ],
+            "emptyCategories": [
+                {
+                    "categoryName": "Mechanical Keyboard",
+                    "activeProductCount": 0,
+                    "sampleProducts": [],
+                }
+            ],
+        }
+    )
+
+    assert message is not None
+    assert "categoryMatched=có" in message
+    assert "Hall Effect Keyboard / HE Keyboard" in message
+    assert "Mercury K1 - US Plug" in message
+    assert "Mechanical Keyboard" in message
+    assert "TỔNG QUAN DANH MỤC" in message
 
 
 def test_resolved_product_prompt_includes_sale_window_when_present() -> None:

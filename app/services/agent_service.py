@@ -31,6 +31,14 @@ def build_recommended_products(orchestrator_results: dict) -> list[RecommendedPr
         if current is None or _effective_price(product) < _effective_price(current):
             products_by_id[product_id] = product
 
+    if not orchestrator_results.get("suppress_catalog_recommendations"):
+        for product in _catalog_sample_products(orchestrator_results.get("catalog_overview")):
+            product_id = str(product.get("productId") or "").strip()
+            image_key = str(product.get("imageKey") or "").strip()
+            if not product_id or not image_key or product_id in products_by_id:
+                continue
+            products_by_id[product_id] = product
+
     recommendations: list[RecommendedProductResponse] = []
     for product_id, product in products_by_id.items():
         image_key = str(product.get("imageKey") or "").strip()
@@ -51,6 +59,28 @@ def build_recommended_products(orchestrator_results: dict) -> list[RecommendedPr
         )
 
     return recommendations
+
+
+def _catalog_sample_products(catalog_overview: object) -> list[dict]:
+    if not isinstance(catalog_overview, dict):
+        return []
+
+    products: list[dict] = []
+    categories = catalog_overview.get("categories") or []
+    if not isinstance(categories, list):
+        return products
+
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        sample_products = category.get("sampleProducts") or []
+        if not isinstance(sample_products, list):
+            continue
+        for product in sample_products:
+            if isinstance(product, dict):
+                products.append(product)
+
+    return products
 
 
 def _effective_price(product: dict) -> float:
@@ -110,6 +140,9 @@ def extract_and_append_related_products(request: AgentRespondRequest, orchestrat
 
 
 def align_resolved_products_with_recommendations(orchestrator_results: dict) -> None:
+    if orchestrator_results.get("catalog_overview"):
+        return
+
     recommendation_keys = {
         (item.productId, item.variantId) for item in build_recommended_products(orchestrator_results)
     }

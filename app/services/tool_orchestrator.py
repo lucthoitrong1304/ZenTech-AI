@@ -1,11 +1,13 @@
 import logging
 import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 from app.core.logging_utils import truncate_text
 from app.schemas.agent import AgentRespondRequest
 from app.services.context_router import ContextRouteDecision
 from app.services.db_tool_client import (
+    get_catalog_overview,
     get_customer_addresses,
     get_customer_profile,
     get_customer_vouchers,
@@ -248,6 +250,18 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         results["resolved_products"] = sale_products
         results["tools_executed"].append("get_sale_products")
 
+    if "get_catalog_overview" in decision.tools:
+        catalog_overview = get_catalog_overview(
+            context,
+            category_name=getattr(decision, "category_name", None),
+            products_per_category=3,
+            include_empty=True,
+        )
+        results["catalog_overview"] = catalog_overview or {}
+        if is_category_mapping_question(request.message):
+            results["suppress_catalog_recommendations"] = True
+        results["tools_executed"].append("get_catalog_overview")
+
     # 9. Warranty Info
     if "get_warranty_status" in decision.tools:
         item_id = extract_identifier(request.message)
@@ -273,6 +287,19 @@ def extract_context_product_id(business_context: Dict[str, Any]) -> Optional[str
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return None
+
+
+def is_category_mapping_question(message: str) -> bool:
+    normalized = normalize_text(message)
+    return "thuoc danh muc" in normalized or "danh muc nao" in normalized or "danh muc gi" in normalized
+
+
+def normalize_text(value: str) -> str:
+    no_marks = "".join(
+        char for char in unicodedata.normalize("NFD", (value or "").lower())
+        if unicodedata.category(char) != "Mn"
+    )
+    return " ".join(no_marks.strip().split())
 
 
 def first_resolved_product_id(results: Dict[str, Any]) -> Optional[str]:

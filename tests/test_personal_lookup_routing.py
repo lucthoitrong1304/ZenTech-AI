@@ -68,7 +68,38 @@ def test_profile_lookup_routes_without_llm() -> None:
 
 
 def test_sale_product_lookup_routes_without_llm() -> None:
-    route = decide_context_tools(make_request("Co san pham nao dang sale ko?"))
+    route = decide_context_tools(make_request("Có sản phẩm nào đang sale không?"))
 
     assert route.intent == "PRODUCT_QA"
     assert route.tools == ["get_sale_products"]
+
+
+def test_catalog_overview_lookup_routes_without_llm() -> None:
+    route = decide_context_tools(make_request("Cho tui hỏi các mặt hàng mà cửa hàng mình kinh doanh?"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["get_catalog_overview"]
+    assert route.category_name is None
+
+
+def test_category_availability_lookup_extracts_keyboard_category() -> None:
+    route = decide_context_tools(make_request("Cho tui hỏi cửa hàng mình có bán bàn phím không?"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["get_catalog_overview"]
+    assert route.category_name == "keyboards"
+
+
+def test_product_category_followup_uses_catalog_overview() -> None:
+    route = decide_context_tools(make_request("Các sản phẩm trên thuộc danh mục nào của cửa hàng?"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["get_catalog_overview"]
+
+
+def test_category_product_listing_extracts_chargers_category() -> None:
+    route = decide_context_tools(make_request("Liệt kê các sản phẩm khác trong danh mục chargers"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["get_catalog_overview"]
+    assert route.category_name == "chargers"
