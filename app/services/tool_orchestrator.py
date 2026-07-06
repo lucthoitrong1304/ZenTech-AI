@@ -14,6 +14,7 @@ from app.services.db_tool_client import (
     get_order_tracking,
     get_product_reviews,
     get_promotions,
+    get_sale_products,
     get_return_requests,
     get_warranty_status,
     resolve_orders,
@@ -47,15 +48,17 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
     }
 
     # Extract business context for DB calls
-    user_id = request.businessContext.get("userId")
     conv_id = request.businessContext.get("conversationId")
+    tool_access_token = request.businessContext.get("toolAccessToken")
+    has_tool_access = isinstance(tool_access_token, str) and bool(tool_access_token.strip())
     context = {
-        "userId": user_id,
         "role": request.role,
         "conversationId": conv_id,
         "shopId": request.businessContext.get("shopId"),
         "channel": request.businessContext.get("channel"),
         "agentId": request.agent.id,
+        "toolAccessToken": tool_access_token,
+        "traceId": request.businessContext.get("traceId"),
     }
     personal_tools = {
         "get_customer_profile",
@@ -71,7 +74,7 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         "get_return_requests",
         "get_warranty_status",
     }
-    if personal_tools.intersection(decision.tools) and not user_id:
+    if personal_tools.intersection(decision.tools) and not has_tool_access:
         results["auth_required"] = True
 
     search_query = request.message
@@ -176,38 +179,38 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         results["tools_executed"].append("knowledge_search")
 
     # 5. Customer Profile Info
-    if "get_customer_profile" in decision.tools and user_id:
-        profile = get_customer_profile(user_id, context)
+    if "get_customer_profile" in decision.tools and has_tool_access:
+        profile = get_customer_profile("", context)
         if profile:
             results["customer_profile"] = profile
             results["tools_executed"].append("get_customer_profile")
 
-    if "get_customer_addresses" in decision.tools and user_id:
-        addresses = get_customer_addresses(user_id, context)
+    if "get_customer_addresses" in decision.tools and has_tool_access:
+        addresses = get_customer_addresses("", context)
         results["customer_addresses"] = addresses
         results["tools_executed"].append("get_customer_addresses")
 
     # 6. Customer Vouchers / Coupons
-    if "get_customer_vouchers" in decision.tools and user_id:
-        vouchers = get_customer_vouchers(user_id, context)
+    if "get_customer_vouchers" in decision.tools and has_tool_access:
+        vouchers = get_customer_vouchers("", context)
         results["customer_vouchers"] = vouchers
         results["tools_executed"].append("get_customer_vouchers")
 
-    if "get_promotions" in decision.tools and user_id:
-        promotions = get_promotions(user_id, context)
+    if "get_promotions" in decision.tools and has_tool_access:
+        promotions = get_promotions("", context)
         results["promotions"] = promotions
         results["tools_executed"].append("get_promotions")
 
     # 7. Customer Loyalty Points
-    if "get_loyalty_points" in decision.tools and user_id:
-        points = get_loyalty_points(user_id, context)
+    if "get_loyalty_points" in decision.tools and has_tool_access:
+        points = get_loyalty_points("", context)
         if points:
             results["loyalty_points"] = points
             results["tools_executed"].append("get_loyalty_points")
 
     # 8. Order Details, Status, Tracking
     order_id_tools = {"get_order_detail", "get_order_status", "get_order_tracking", "get_customer_orders"}
-    if order_id_tools.intersection(decision.tools) and user_id:
+    if order_id_tools.intersection(decision.tools) and has_tool_access:
         # Extract order ID if explicitly asked
         extracted_order_id = extract_identifier(request.message)
         
@@ -221,13 +224,13 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["order_tracking"] = tracking
             results["tools_executed"].append("get_order_tracking")
 
-    if "get_purchase_history" in decision.tools and user_id:
+    if "get_purchase_history" in decision.tools and has_tool_access:
         order_info = get_customer_orders(context)
         results["order_info"] = order_info
         results["tools_executed"].append("get_purchase_history")
 
-    if "get_return_requests" in decision.tools and user_id:
-        returns = get_return_requests(user_id, context)
+    if "get_return_requests" in decision.tools and has_tool_access:
+        returns = get_return_requests("", context)
         results["return_requests"] = returns
         results["tools_executed"].append("get_return_requests")
 
@@ -239,6 +242,11 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
             results["tools_executed"].append("get_product_reviews")
         else:
             results["product_reviews"] = []
+
+    if "get_sale_products" in decision.tools:
+        sale_products = get_sale_products(context, limit=request.agent.topK)
+        results["resolved_products"] = sale_products
+        results["tools_executed"].append("get_sale_products")
 
     # 9. Warranty Info
     if "get_warranty_status" in decision.tools:

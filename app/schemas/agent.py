@@ -45,6 +45,10 @@ class RecommendedProductResponse(BaseModel):
     name: str
     imageKey: str
     price: float
+    originalPrice: float | None = None
+    salePrice: float | None = None
+    saleStartAt: str | None = None
+    saleEndAt: str | None = None
     stock: int
 
 

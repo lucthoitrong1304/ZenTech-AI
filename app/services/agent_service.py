@@ -20,14 +20,20 @@ llm_logger = logging.getLogger("ai-service.llm")
 
 
 def build_recommended_products(orchestrator_results: dict) -> list[RecommendedProductResponse]:
-    recommendations: list[RecommendedProductResponse] = []
-    seen_product_ids: set[str] = set()
+    products_by_id: dict[str, dict] = {}
 
     for product in orchestrator_results.get("resolved_products", []):
         product_id = str(product.get("productId") or "").strip()
         image_key = str(product.get("imageKey") or "").strip()
-        if not product_id or not image_key or product_id in seen_product_ids:
+        if not product_id or not image_key:
             continue
+        current = products_by_id.get(product_id)
+        if current is None or _effective_price(product) < _effective_price(current):
+            products_by_id[product_id] = product
+
+    recommendations: list[RecommendedProductResponse] = []
+    for product_id, product in products_by_id.items():
+        image_key = str(product.get("imageKey") or "").strip()
 
         recommendations.append(
             RecommendedProductResponse(
@@ -36,12 +42,30 @@ def build_recommended_products(orchestrator_results: dict) -> list[RecommendedPr
                 name=str(product.get("name") or ""),
                 imageKey=image_key,
                 price=float(product.get("price") or 0),
+                originalPrice=float(product["originalPrice"]) if product.get("originalPrice") is not None else None,
+                salePrice=float(product["salePrice"]) if product.get("salePrice") is not None else None,
+                saleStartAt=str(product["saleStartAt"]) if product.get("saleStartAt") else None,
+                saleEndAt=str(product["saleEndAt"]) if product.get("saleEndAt") else None,
                 stock=int(product.get("stock") or 0),
             )
         )
-        seen_product_ids.add(product_id)
 
     return recommendations
+
+
+def _effective_price(product: dict) -> float:
+    try:
+        return float(product.get("price") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _variant_key(product: dict) -> tuple[str, str | None]:
+    product_id = str(product.get("productId") or "").strip()
+    variant_id = product.get("variantId")
+    return product_id, str(variant_id) if variant_id else None
+
+
 def extract_and_append_related_products(request: AgentRespondRequest, orchestrator_results: dict) -> None:
     message_lower = request.message.lower()
     keywords = ["liên quan", "tương tự", "khác", "cùng nhóm", "related", "similar", "alternative"]
@@ -68,6 +92,10 @@ def extract_and_append_related_products(request: AgentRespondRequest, orchestrat
                     "name": item.get("name"),
                     "variantName": item.get("variantName"),
                     "price": float(item.get("price") or 0),
+                    "originalPrice": float(item["originalPrice"]) if item.get("originalPrice") is not None else None,
+                    "salePrice": float(item["salePrice"]) if item.get("salePrice") is not None else None,
+                    "saleStartAt": item.get("saleStartAt"),
+                    "saleEndAt": item.get("saleEndAt"),
                     "stock": int(item.get("stock") or 0),
                     "imageKey": item.get("imageKey"),
                     "description": "",
@@ -82,15 +110,15 @@ def extract_and_append_related_products(request: AgentRespondRequest, orchestrat
 
 
 def align_resolved_products_with_recommendations(orchestrator_results: dict) -> None:
-    recommendation_ids = {
-        item.productId for item in build_recommended_products(orchestrator_results)
+    recommendation_keys = {
+        (item.productId, item.variantId) for item in build_recommended_products(orchestrator_results)
     }
     seen_product_ids: set[str] = set()
     aligned_products = []
 
     for product in orchestrator_results.get("resolved_products", []):
         product_id = str(product.get("productId") or "").strip()
-        if product_id in recommendation_ids and product_id not in seen_product_ids:
+        if _variant_key(product) in recommendation_keys and product_id not in seen_product_ids:
             aligned_products.append(product)
             seen_product_ids.add(product_id)
 

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any, Dict, List
 
 from app.schemas.agent import AgentRespondRequest
@@ -39,7 +40,7 @@ def build_agent_model_input(
         )
     })
 
-    # 3. Business Context (UserId, Role, etc.)
+    # 3. Business Context (role, conversation, safe page context, etc.)
     business_context = build_business_context_message(request.businessContext)
     if business_context:
         messages.append({"role": "system", "content": business_context})
@@ -120,7 +121,8 @@ def build_business_context_message(context: Dict[str, Any]) -> str | None:
     if not context:
         return None
 
-    lines = [f"- {key}: {value}" for key, value in context.items() if value is not None]
+    sensitive_keys = {"toolAccessToken", "accessToken", "authorization", "Authorization"}
+    lines = [f"- {key}: {value}" for key, value in context.items() if value is not None and key not in sensitive_keys]
     if not lines:
         return None
     return "NGỮ CẢNH HỆ THỐNG / THÔNG TIN PHIÊN CHAT:\n" + "\n".join(lines)
@@ -151,12 +153,13 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
         confidence = "Rất cao" if score >= 0.75 else ("Trung bình" if score >= 0.45 else "Thấp (Cần hỏi lại khách hàng để xác nhận)")
         
         variant_desc = f" (Biến thể: {prod.get('variantName')})" if prod.get("variantName") else ""
+        price_line = build_price_line(prod)
         lines.append(
             f"{idx}. {prod.get('name')}{variant_desc}\n"
             f"   - ProductId: {prod.get('productId')}\n"
             f"   - VariantId: {prod.get('variantId')}\n"
             f"   - Sku: {prod.get('sku')}\n"
-            f"   - Giá thực tế: {prod.get('price'):,.0f} VND\n"
+            f"   - {price_line}\n"
             f"   - Tồn kho: {prod.get('stock')} sản phẩm\n"
             f"   - Khuyến mãi: {prod.get('promotionInfo') or 'Không có'}\n"
             f"   - Đánh giá: {prod.get('rating') or 'Chưa có'} sao ({prod.get('reviewCount') or 0} đánh giá)\n"
@@ -173,7 +176,73 @@ def build_resolved_products_message(resolved: List[Dict[str, Any]], candidates: 
         for title, content in detail_sections:
             if content and str(content).strip():
                 lines.append(f"   - {title} (Markdown):\n{str(content).strip()}")
+        variant_lines = build_variant_lines(prod)
+        if variant_lines:
+            lines.append("   - DANH SÁCH BIẾN THỂ:\n" + "\n".join(variant_lines))
     return "\n".join(lines)
+
+
+def build_price_line(product: Dict[str, Any]) -> str:
+    price = float(product.get("price") or 0)
+    original_price = product.get("originalPrice")
+    sale_price = product.get("salePrice")
+
+    if sale_price is not None and original_price is not None:
+        sale_value = float(sale_price)
+        original_value = float(original_price)
+        if sale_value < original_value:
+            sale_window = build_sale_window_text(product)
+            suffix = f", {sale_window}" if sale_window else ""
+            return f"Giá sale hiện tại: {sale_value:,.0f} VND (giá gốc: {original_value:,.0f} VND{suffix})"
+
+    return f"Giá hiện tại: {price:,.0f} VND"
+
+
+def build_variant_lines(product: Dict[str, Any]) -> List[str]:
+    variants = product.get("variants") or []
+    if not isinstance(variants, list):
+        return []
+
+    lines: List[str] = []
+    for idx, variant in enumerate(variants, 1):
+        if not isinstance(variant, dict):
+            continue
+
+        name = variant.get("variantName") or "Không tên"
+        color = variant.get("nameColor")
+        color_code = variant.get("colorCode")
+        color_parts = [str(item) for item in (color, color_code) if item]
+        color_text = f", màu: {' / '.join(color_parts)}" if color_parts else ""
+        stock = variant.get("stock")
+        stock_text = f", tồn kho: {stock} sản phẩm" if stock is not None else ""
+        lines.append(f"     {idx}. {name}{color_text} - {build_price_line(variant)}{stock_text}")
+
+    return lines
+
+
+def build_sale_window_text(product: Dict[str, Any]) -> str | None:
+    start = format_sale_datetime(product.get("saleStartAt"))
+    end = format_sale_datetime(product.get("saleEndAt"))
+    if start and end:
+        return f"áp dụng từ {start} đến {end}"
+    if start:
+        return f"áp dụng từ {start}"
+    if end:
+        return f"áp dụng đến {end}"
+    return None
+
+
+def format_sale_datetime(value: Any) -> str | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw
+    return parsed.strftime("%d/%m/%Y %H:%M")
 
 
 def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
@@ -182,7 +251,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     if results.get("auth_required"):
         lines.append(
             "YÊU CẦU ĐĂNG NHẬP: Câu hỏi cần dữ liệu cá nhân của khách hàng, "
-            "nhưng request AI không có userId nội bộ. Hãy báo khách đăng nhập để ZenTech AI tra cứu, "
+            "nhưng request AI không có phiên xác thực hợp lệ. Hãy báo khách đăng nhập để ZenTech AI tra cứu, "
             "không yêu cầu khách gửi email/số điện thoại trong chat."
         )
     
@@ -225,7 +294,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     reviews = results.get("product_reviews")
     if reviews:
         lines.append(
-            "NOI DUNG DANH GIA SAN PHAM TRA CUU:\n"
+            "NỘI DUNG ĐÁNH GIÁ SẢN PHẨM TRA CỨU:\n"
             + json.dumps(reviews, ensure_ascii=False, indent=2)
             + "\nHướng dẫn: Nếu khách hỏi review tích cực hay không, hãy dựa vào rating và comment thực tế ở trên. "
             + "Phân loại ngắn gọn thành tích cực / trung lập / tiêu cực; nếu comment trống thì nói rõ giới hạn."
@@ -244,7 +313,7 @@ def build_db_tool_context_message(results: Dict[str, Any]) -> str | None:
     if not lines:
         return None
     
-    return "THÔNG TIN NGHIỆP VỤ TỪ DATABASE TRUY XUẤT QUA API NỘI BỘ:\n\n" + "\n\n".join(lines)
+    return "THÔNG TIN NGHIỆP VỤ TỪ DATABASE TRUY XUẤT QUA API BE ĐÃ XÁC THỰC:\n\n" + "\n\n".join(lines)
 
 
 def build_knowledge_context_message(context: List[Any]) -> str | None:

@@ -53,13 +53,9 @@ class Settings(BaseSettings):
     qdrant_vector_size: int = Field(default=1536, alias="QDRANT_VECTOR_SIZE")
     qdrant_search_limit: int = Field(default=5, alias="QDRANT_SEARCH_LIMIT")
 
-    spring_boot_internal_url: str = Field(
+    spring_boot_api_url: str = Field(
         default="http://localhost:8080",
-        alias="SPRING_BOOT_INTERNAL_URL",
-    )
-    spring_boot_internal_token: str = Field(
-        default="zentech_internal_secret_token_123!@",
-        alias="SPRING_BOOT_INTERNAL_TOKEN",
+        alias="SPRING_BOOT_API_URL",
     )
 
     @property
