@@ -74,6 +74,35 @@ def test_sale_product_lookup_routes_without_llm() -> None:
     assert route.tools == ["get_sale_products"]
 
 
+def test_learning_code_routes_out_of_scope_without_llm() -> None:
+    route = decide_context_tools(make_request("Hay giup tui hoc code"))
+
+    assert route.intent == "OUT_OF_SCOPE"
+    assert route.tools == []
+
+
+def test_food_chat_routes_out_of_scope_without_llm() -> None:
+    route = decide_context_tools(make_request("Bun bo ngon qua"))
+
+    assert route.intent == "OUT_OF_SCOPE"
+    assert route.tools == []
+
+
+def test_learning_python_routes_out_of_scope_without_llm() -> None:
+    route = decide_context_tools(make_request("Day tui Python"))
+
+    assert route.intent == "OUT_OF_SCOPE"
+    assert route.tools == []
+
+
+def test_product_comparison_routes_without_recommendations() -> None:
+    route = decide_context_tools(make_request("compare Power Strip voi Alpha65"))
+
+    assert route.intent == "PRODUCT_QA"
+    assert route.tools == ["product_search", "resolve_product_candidates"]
+    assert route.suppress_recommendations is True
+
+
 def test_catalog_overview_lookup_routes_without_llm() -> None:
     route = decide_context_tools(make_request("Cho tui hỏi các mặt hàng mà cửa hàng mình kinh doanh?"))
 
@@ -103,6 +132,13 @@ def test_category_product_listing_extracts_chargers_category() -> None:
     assert route.intent == "PRODUCT_QA"
     assert route.tools == ["get_catalog_overview"]
     assert route.category_name == "chargers"
+
+
+def test_simple_thanks_still_routes_small_talk() -> None:
+    route = decide_context_tools(make_request("cam on"))
+
+    assert route.intent == "SMALL_TALK"
+    assert route.tools == []
 
 
 def test_human_handoff_routes_without_llm() -> None:

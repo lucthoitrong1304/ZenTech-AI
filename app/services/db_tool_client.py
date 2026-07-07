@@ -114,11 +114,11 @@ def get_sale_products(context: Dict[str, Any], limit: int = 10) -> List[Dict[str
 def get_catalog_overview(
     context: Dict[str, Any],
     category_name: Optional[str] = None,
-    products_per_category: int = 3,
+    products_per_category: int = 5,
     include_empty: bool = True,
 ) -> Optional[Dict[str, Any]]:
     query = {
-        "productsPerCategory": min(max(products_per_category, 1), 5),
+        "productsPerCategory": min(max(products_per_category, 1), 100),
         "includeEmpty": str(include_empty).lower(),
     }
     if category_name:

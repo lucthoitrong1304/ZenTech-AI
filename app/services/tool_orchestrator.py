@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.logging_utils import truncate_text
 from app.schemas.agent import AgentRespondRequest
-from app.services.context_router import ContextRouteDecision
+from app.services.context_router import ContextRouteDecision, is_product_comparison_query, normalize
 from app.services.db_tool_client import (
     get_catalog_overview,
     get_customer_addresses,
@@ -48,6 +48,8 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         "intent": decision.intent,
         "tools_executed": [],
     }
+    if getattr(decision, "suppress_recommendations", False) or is_product_comparison_query(normalize(request.message)):
+        results["suppress_recommendations"] = True
 
     # Extract business context for DB calls
     conv_id = request.businessContext.get("conversationId")
@@ -251,10 +253,11 @@ def execute_tool_plan(request: AgentRespondRequest, decision: ContextRouteDecisi
         results["tools_executed"].append("get_sale_products")
 
     if "get_catalog_overview" in decision.tools:
+        products_per_category = parse_catalog_products_per_category(request.message)
         catalog_overview = get_catalog_overview(
             context,
             category_name=getattr(decision, "category_name", None),
-            products_per_category=3,
+            products_per_category=products_per_category,
             include_empty=True,
         )
         results["catalog_overview"] = catalog_overview or {}
@@ -292,6 +295,27 @@ def extract_context_product_id(business_context: Dict[str, Any]) -> Optional[str
 def is_category_mapping_question(message: str) -> bool:
     normalized = normalize_text(message)
     return "thuoc danh muc" in normalized or "danh muc nao" in normalized or "danh muc gi" in normalized
+
+
+def parse_catalog_products_per_category(message: str) -> int:
+    normalized = normalize_text(message)
+    show_all_tokens = (
+        "show all",
+        "liet ke tat ca",
+        "xem tat ca",
+        "xem toan bo",
+        "toan bo san pham",
+        "tat ca san pham",
+        "all san pham",
+    )
+    if any(token in normalized for token in show_all_tokens):
+        return 100
+
+    quantity_match = re.search(r"\b(?:liet ke|show|hien|xem|lay)\s+(\d{1,3})\b", normalized)
+    if quantity_match:
+        return min(max(int(quantity_match.group(1)), 1), 100)
+
+    return 5
 
 
 def normalize_text(value: str) -> str:

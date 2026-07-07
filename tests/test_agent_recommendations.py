@@ -165,6 +165,40 @@ def test_suppressed_catalog_recommendations_do_not_create_cards() -> None:
     assert result == []
 
 
+def test_suppressed_recommendations_do_not_create_any_cards() -> None:
+    result = build_recommended_products(
+        {
+            "suppress_recommendations": True,
+            "resolved_products": [
+                {
+                    "productId": "resolved-product",
+                    "name": "Power Strip",
+                    "imageKey": "power.webp",
+                    "price": 990_000,
+                    "stock": 10,
+                }
+            ],
+            "catalog_overview": {
+                "categories": [
+                    {
+                        "sampleProducts": [
+                            {
+                                "productId": "catalog-product",
+                                "name": "Alpha65",
+                                "imageKey": "alpha.webp",
+                                "price": 1_100_000,
+                                "stock": 8,
+                            }
+                        ]
+                    }
+                ]
+            },
+        }
+    )
+
+    assert result == []
+
+
 def test_sse_event_contains_named_json_payload() -> None:
     event = _sse_event("complete", {"recommendedProducts": [], "handoffRecommended": False})
     lines = event.strip().splitlines()
@@ -174,6 +208,41 @@ def test_sse_event_contains_named_json_payload() -> None:
         "recommendedProducts": [],
         "handoffRecommended": False,
     }
+
+
+def test_out_of_scope_reply_skips_tools_and_llm(monkeypatch) -> None:
+    request = AgentRespondRequest(
+        agent=RuntimeAgentConfig(
+            id="agent-1",
+            name="ZenTech AI",
+            systemPrompt="Tra loi ngan gon.",
+        ),
+        role="CUSTOMER",
+        message="Hay giup tui hoc code",
+    )
+
+    monkeypatch.setattr(
+        agent_service,
+        "decide_context_tools",
+        lambda _: ContextRouteDecision("OUT_OF_SCOPE", [], "test"),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "execute_tool_plan",
+        lambda _request, _route: (_ for _ in ()).throw(AssertionError("tools should not run")),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "build_client",
+        lambda: (_ for _ in ()).throw(AssertionError("LLM should not run")),
+    )
+
+    response = agent_service.generate_agent_reply(request)
+
+    assert response.content == agent_service.OUT_OF_SCOPE_MESSAGE
+    assert response.handoffRecommended is False
+    assert response.retrievedContext == []
+    assert response.recommendedProducts == []
 
 
 def test_stream_complete_includes_handoff_recommendation(monkeypatch) -> None:

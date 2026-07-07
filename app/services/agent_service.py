@@ -18,8 +18,17 @@ from app.services.tool_orchestrator import execute_tool_plan
 logger = logging.getLogger("ai-service.agent")
 llm_logger = logging.getLogger("ai-service.llm")
 
+OUT_OF_SCOPE_MESSAGE = (
+    "Xin lỗi, ZenTech AI chỉ hỗ trợ các vấn đề liên quan đến sản phẩm, đơn hàng, "
+    "khuyến mãi, bảo hành, vận chuyển và dịch vụ của ZenTech. Mình chưa thể hỗ trợ "
+    "chủ đề này. Bạn có thể hỏi mình về sản phẩm, danh mục, giá, tồn kho hoặc đơn hàng nhé."
+)
+
 
 def build_recommended_products(orchestrator_results: dict) -> list[RecommendedProductResponse]:
+    if orchestrator_results.get("suppress_recommendations"):
+        return []
+
     products_by_id: dict[str, dict] = {}
 
     for product in orchestrator_results.get("resolved_products", []):
@@ -140,7 +149,7 @@ def extract_and_append_related_products(request: AgentRespondRequest, orchestrat
 
 
 def align_resolved_products_with_recommendations(orchestrator_results: dict) -> None:
-    if orchestrator_results.get("catalog_overview"):
+    if orchestrator_results.get("catalog_overview") or orchestrator_results.get("suppress_recommendations"):
         return
 
     recommendation_keys = {
@@ -185,6 +194,15 @@ def generate_agent_reply(request: AgentRespondRequest) -> AgentRespondResponse:
     )
     route = decide_context_tools(request)
     logger.info("Agent route selected: intent=%s tools=%s", route.intent, route.tools)
+    if route.intent == "OUT_OF_SCOPE":
+        return AgentRespondResponse(
+            content=OUT_OF_SCOPE_MESSAGE,
+            fallback=False,
+            handoffRecommended=False,
+            retrievedContext=[],
+            recommendedProducts=[],
+        )
+
     orchestrator_results = execute_tool_plan(request, route)
     extract_and_append_related_products(request, orchestrator_results)
     align_resolved_products_with_recommendations(orchestrator_results)
@@ -247,6 +265,10 @@ def generate_agent_reply_stream(request: AgentRespondRequest) -> Generator[str, 
         route = decide_context_tools(request)
         handoff_recommended = route.intent == "HUMAN_HANDOFF"
         logger.info("Streaming agent route selected: intent=%s tools=%s", route.intent, route.tools)
+        if route.intent == "OUT_OF_SCOPE":
+            yield _sse_event("chunk", {"content": OUT_OF_SCOPE_MESSAGE})
+            return
+
         orchestrator_results = execute_tool_plan(request, route)
         extract_and_append_related_products(request, orchestrator_results)
         align_resolved_products_with_recommendations(orchestrator_results)

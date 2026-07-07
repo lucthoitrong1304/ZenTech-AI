@@ -135,7 +135,7 @@ def test_orchestrator_fetches_sale_products(monkeypatch) -> None:
 def test_orchestrator_fetches_catalog_overview(monkeypatch) -> None:
     calls = []
 
-    def fake_get_catalog_overview(context, category_name=None, products_per_category=3, include_empty=True):
+    def fake_get_catalog_overview(context, category_name=None, products_per_category=5, include_empty=True):
         calls.append((category_name, products_per_category, include_empty))
         return {
             "categoryQuery": category_name,
@@ -176,9 +176,65 @@ def test_orchestrator_fetches_catalog_overview(monkeypatch) -> None:
         ),
     )
 
-    assert calls == [("keyboards", 3, True)]
+    assert calls == [("keyboards", 5, True)]
     assert result["catalog_overview"]["categoryMatched"] is True
     assert "get_catalog_overview" in result["tools_executed"]
+
+
+def test_orchestrator_fetches_all_catalog_products_when_requested(monkeypatch) -> None:
+    calls = []
+
+    def fake_get_catalog_overview(context, category_name=None, products_per_category=5, include_empty=True):
+        calls.append((category_name, products_per_category, include_empty))
+        return {"categoryQuery": category_name, "categoryMatched": True, "categories": []}
+
+    monkeypatch.setattr(
+        "app.services.tool_orchestrator.get_catalog_overview",
+        fake_get_catalog_overview,
+    )
+
+    execute_tool_plan(
+        make_request(
+            message="show all san pham trong danh muc chargers",
+            business_context={"conversationId": "conversation-1"},
+        ),
+        ContextRouteDecision(
+            "PRODUCT_QA",
+            ["get_catalog_overview"],
+            "test",
+            category_name="chargers",
+        ),
+    )
+
+    assert calls == [("chargers", 100, True)]
+
+
+def test_orchestrator_uses_requested_catalog_product_count(monkeypatch) -> None:
+    calls = []
+
+    def fake_get_catalog_overview(context, category_name=None, products_per_category=5, include_empty=True):
+        calls.append((category_name, products_per_category, include_empty))
+        return {"categoryQuery": category_name, "categoryMatched": True, "categories": []}
+
+    monkeypatch.setattr(
+        "app.services.tool_orchestrator.get_catalog_overview",
+        fake_get_catalog_overview,
+    )
+
+    execute_tool_plan(
+        make_request(
+            message="liet ke 10 san pham trong danh muc chargers",
+            business_context={"conversationId": "conversation-1"},
+        ),
+        ContextRouteDecision(
+            "PRODUCT_QA",
+            ["get_catalog_overview"],
+            "test",
+            category_name="chargers",
+        ),
+    )
+
+    assert calls == [("chargers", 10, True)]
 
 
 def test_orchestrator_suppresses_catalog_recommendations_for_category_mapping(monkeypatch) -> None:

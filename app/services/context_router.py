@@ -20,6 +20,7 @@ class ContextRouteDecision:
     should_search_knowledge: bool = False
     category_name: str | None = None
     product_name: str | None = None
+    suppress_recommendations: bool = False
 
 
 def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
@@ -34,6 +35,9 @@ def decide_context_tools(request: AgentRespondRequest) -> ContextRouteDecision:
 
     if is_human_handoff_request(message):
         return ContextRouteDecision("HUMAN_HANDOFF", [], "heuristic_human_handoff")
+
+    if is_out_of_scope_query(message):
+        return ContextRouteDecision("OUT_OF_SCOPE", [], "heuristic_out_of_scope")
 
     heuristic = route_common_lookup_intents(message, request)
     if heuristic:
@@ -136,6 +140,139 @@ def is_catalog_overview_query(message: str) -> bool:
     return any(token in message for token in overview_tokens) or any(token in message for token in category_lookup_tokens)
 
 
+def has_business_scope_signal(message: str) -> bool:
+    business_tokens = (
+        "zentech",
+        "shop",
+        "cua hang",
+        "san pham",
+        "sp",
+        "hang",
+        "mat hang",
+        "danh muc",
+        "ban phim",
+        "keyboard",
+        "charger",
+        "sac",
+        "chuot",
+        "mouse",
+        "loa",
+        "speaker",
+        "tai nghe",
+        "earbud",
+        "phu kien",
+        "gia",
+        "bao nhieu",
+        "ton kho",
+        "con hang",
+        "het hang",
+        "sale",
+        "giam gia",
+        "khuyen mai",
+        "voucher",
+        "coupon",
+        "don hang",
+        "order",
+        "giao hang",
+        "van chuyen",
+        "doi tra",
+        "tra hang",
+        "hoan hang",
+        "huy don",
+        "bao hanh",
+        "thanh toan",
+        "gio hang",
+        "dia chi",
+        "tai khoan",
+        "profile",
+        "ho so",
+        "lich su mua",
+        "diem tich luy",
+        "review",
+        "danh gia",
+        "tu van mua",
+        "ho tro mua",
+    )
+    return any(token in message for token in business_tokens)
+
+
+def is_out_of_scope_query(message: str) -> bool:
+    if has_business_scope_signal(message):
+        return False
+
+    out_of_scope_tokens = (
+        "hoc code",
+        "lap trinh",
+        "programming",
+        "python",
+        "javascript",
+        "java",
+        "c++",
+        "debug code",
+        "bai tap",
+        "giai bai",
+        "hoc tieng",
+        "ngoai ngu",
+        "tieng anh",
+        "nau an",
+        "cach nau",
+        "mon an",
+        "bun bo",
+        "pho",
+        "com tam",
+        "tra sua",
+        "lam tho",
+        "viet truyen",
+        "ke chuyen",
+        "choi game",
+        "xem phim",
+        "am nhac",
+        "tin tuc",
+        "chinh tri",
+        "bong da",
+        "the thao",
+        "y te",
+        "benh",
+        "thuoc",
+        "phap ly",
+        "luat",
+        "dau tu",
+        "chung khoan",
+        "crypto",
+        "bitcoin",
+    )
+    if any(token in message for token in out_of_scope_tokens):
+        return True
+
+    general_help_tokens = (
+        "day tui",
+        "giup tui hoc",
+        "chi tui hoc",
+        "huong dan hoc",
+        "giai thich ve",
+    )
+    return any(token in message for token in general_help_tokens)
+
+
+def is_product_comparison_query(message: str) -> bool:
+    comparison_tokens = (
+        "so sanh",
+        "compare",
+        "khac nhau",
+        "diem khac",
+        "nen chon",
+        "chon cai nao",
+        "chon san pham nao",
+        "tot hon",
+        "dang mua hon",
+    )
+    if any(token in message for token in comparison_tokens):
+        return True
+
+    words = message.split()
+    return "voi" in words and 2 <= len(words) <= 16
+
+
 def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> ContextRouteDecision | None:
     has_product_context = bool(
         request.businessContext.get("currentProductId")
@@ -172,6 +309,14 @@ def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> C
             "ORDER_QA",
             ["get_customer_orders", "get_order_detail", "get_order_status"],
             "heuristic_order_lookup",
+        )
+
+    if is_product_comparison_query(message):
+        return ContextRouteDecision(
+            "PRODUCT_QA",
+            ["product_search", "resolve_product_candidates"],
+            "heuristic_product_comparison_lookup",
+            suppress_recommendations=True,
         )
 
     sale_tokens = ("dang sale", "san pham sale", "san pham nao sale", "giam gia", "uu dai san pham", "khuyen mai san pham")
@@ -266,6 +411,13 @@ Bổ sung quan trọng về tool catalog:
 - Nếu khách hỏi "có bán bàn phím/keyboards/chargers/..." hãy trích `category_name` và chọn ["get_catalog_overview"].
 """
 
+INTENT_ROUTING_PROMPT += """
+
+Bo sung quan trong ve pham vi tra loi:
+- Neu tin nhan khong lien quan den san pham, danh muc, gia/ton kho, khuyen mai/voucher, don hang, doi tra, bao hanh, van chuyen, tai khoan khach hang, thong tin cua hang hoac ho tro mua hang ZenTech, hay chon intent `OUT_OF_SCOPE` va tools [].
+- Cac chu de ngoai pham vi gom hoc code/lap trinh, nau an, giai tri, hoi kien thuc chung, tin tuc, y te, phap ly, tai chinh khong lien quan shop.
+"""
+
 def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecision:
     history_str = ""
     for h in request.history[-5:]:
@@ -333,7 +485,15 @@ def classify_intent_via_llm(request: AgentRespondRequest) -> ContextRouteDecisio
             category_name,
             product_name,
         )
-        return ContextRouteDecision(intent, tools, reason, should_search_knowledge, category_name, product_name)
+        return ContextRouteDecision(
+            intent,
+            tools,
+            reason,
+            should_search_knowledge,
+            category_name,
+            product_name,
+            suppress_recommendations=is_product_comparison_query(normalize(request.message)),
+        )
 
     except Exception as ex:
         logger.error("Failed to classify intent via LLM, fallback to KNOWLEDGE_QA", exc_info=True)
