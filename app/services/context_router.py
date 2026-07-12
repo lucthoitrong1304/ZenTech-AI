@@ -266,11 +266,7 @@ def is_product_comparison_query(message: str) -> bool:
         "tot hon",
         "dang mua hon",
     )
-    if any(token in message for token in comparison_tokens):
-        return True
-
-    words = message.split()
-    return "voi" in words and 2 <= len(words) <= 16
+    return any(token in message for token in comparison_tokens)
 
 
 def route_common_lookup_intents(message: str, request: AgentRespondRequest) -> ContextRouteDecision | None:
