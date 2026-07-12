@@ -146,9 +146,11 @@ def setup_logging() -> None:
         root_logger.addHandler(file_handler)
 
     file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] [%(trace_id)s] - %(message)s")
-    )
+    import datetime
+    tz_vn = datetime.timezone(datetime.timedelta(hours=7))
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] [%(name)s] [%(trace_id)s] - %(message)s")
+    formatter.converter = lambda secs: datetime.datetime.fromtimestamp(secs, tz=tz_vn).timetuple()
+    file_handler.setFormatter(formatter)
 
     if not any(isinstance(log_filter, TraceIdFilter) for log_filter in file_handler.filters):
         file_handler.addFilter(TraceIdFilter())
