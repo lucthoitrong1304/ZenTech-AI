@@ -160,8 +160,11 @@ def setup_logging() -> None:
     for uvicorn_logger_name in ("uvicorn", "uvicorn.error"):
         uvicorn_logger = logging.getLogger(uvicorn_logger_name)
         uvicorn_logger.setLevel(logging.INFO)
-        if file_handler not in uvicorn_logger.handlers:
-            uvicorn_logger.addHandler(file_handler)
+        # Write through the root file handler only. Attaching the same handler here
+        # and propagating to root would persist every Uvicorn event twice.
+        if file_handler in uvicorn_logger.handlers:
+            uvicorn_logger.removeHandler(file_handler)
+        uvicorn_logger.propagate = True
 
     access_logger = logging.getLogger("uvicorn.access")
     access_logger.setLevel(logging.WARNING)
